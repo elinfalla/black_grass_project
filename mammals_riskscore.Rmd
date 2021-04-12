@@ -64,7 +64,9 @@ calculate_F_D <- function(data) {
 ```
 
 ### Calculate A and B
-Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy
+Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy  
+
+Overlap is found by applying the '&' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap.  
 
 ``` {r calc-A}
 calculate_A_B <- function(data, strat) {
@@ -73,33 +75,53 @@ calculate_A_B <- function(data, strat) {
   diets_habs <- data %>%
     select(C_BG:R_hab)
   
-
-  # SUBSET STRAT (for testing only)
-  strat <- strat[2,2:(ncol(diets_habs)+1)]
-  
   # column number of last diet column
-  last_d_col <- ncol(diets_habs) - 4
-  print(last_d_col)
+  last_d_col <- ncol(diets_habs) - 4  # 4 habitat columns
   
   # find overlap
   overlap <- t(apply(diets_habs, 1, function(row) row & strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
-  
-  print(overlap[,1:last_d_col])
-  print(overlap[,(last_d_col+1):ncol(mammals)])
-  
+
   # find A (sum diet cols of overlap)
-  A <- rowSums(overlap[,1:last_d_col]) # note this will change if data stuct changes
+  A <- rowSums(overlap[,1:last_d_col])
   
   # find B (sum habitat cols of overlap)
   B <- rowSums(overlap[,(last_d_col+1):ncol(diets_habs)])
   
-  return(data.frame(A, B)) # return transpose
+  return(data.frame(A, B))
 }
 ```
 
-### Calculate B
+test code for calculate_A_B():
+``` {r test-ab}
+test_strat <- man_strats %>% select(!c(C_AQ, M_AQ, H_AQ))
+test_strat <- test_strat[1, 2:26] # subset so columns are same as for data
+calculate_A_B(mammals, test_strat)
+```
 
+### Calculate Dt
+Dt = A/(D*F) + B/F  
+``` {r calc-Dt}
+calculate_Dt <- function(data, strat) {
+  A_B <- calculate_A_B(data, strat)
+  F_D <- calculate_F_D(data)
+  
+  calc_Dt <- cbind(A_B, F_D)
+  print(calc_Dt)
+  Dt <- calc_Dt$A / (calc_Dt$D * calc_Dt$F) + calc_Dt$B / calc_Dt$F
+
+  return(Dt)
+}
+
+```
+
+test calculate_Dt()
+``` {r test-dt}
+Dt <- calculate_Dt(mammals, test_strat)
+print(Dt)
+```
 ## Then calculate Nt
+
+
 ### Calculate C1
 ### Calculate C2
 ### Calculate N
