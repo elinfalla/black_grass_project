@@ -63,12 +63,40 @@ calculate_F_D <- function(data) {
 }
 ```
 
-### Calculate A
+### Calculate A and B
+Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy
+
 ``` {r calc-A}
-calculate_A <- function(strat) {
+calculate_A_B <- function(data, strat) {
   
+  # subset diet and habitat columns from data
+  diets_habs <- data %>%
+    select(C_BG:R_hab)
+  
+
+  # SUBSET STRAT (for testing only)
+  strat <- strat[2,2:(ncol(diets_habs)+1)]
+  
+  # column number of last diet column
+  last_d_col <- ncol(diets_habs) - 4
+  print(last_d_col)
+  
+  # find overlap
+  overlap <- t(apply(diets_habs, 1, function(row) row & strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  
+  print(overlap[,1:last_d_col])
+  print(overlap[,(last_d_col+1):ncol(mammals)])
+  
+  # find A (sum diet cols of overlap)
+  A <- rowSums(overlap[,1:last_d_col]) # note this will change if data stuct changes
+  
+  # find B (sum habitat cols of overlap)
+  B <- rowSums(overlap[,(last_d_col+1):ncol(diets_habs)])
+  
+  return(data.frame(A, B)) # return transpose
 }
 ```
+
 ### Calculate B
 
 ## Then calculate Nt
@@ -77,3 +105,4 @@ calculate_A <- function(strat) {
 ### Calculate N
 
 ## Finally calculate risk score
+when doing this, remember to prep man_strats - ie. same num cols as mammals in same order, and do 1 row at a time - COULD CHANGE SO FUNCTION TAKES IN ALL STRATS AND CALCULATES ROW WISE??
