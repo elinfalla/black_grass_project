@@ -7,22 +7,68 @@ output:
   word_document: default
 fontsize: 11pt
 ---
-First read in data and shit
-``` {r}
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
+## Set-up
+```{r load-packages, message=FALSE}
+
+rm(list = ls()) # clear env
+library(readxl) # for reading in Excel sheets
+library(tidyverse) # for data manipulation
 
 ```
 
+
+## Read in required datasets  
+``` {r read-in-data}
+man_strats <- read_xlsx("change.xlsx", 3) # farm management strategies
+
+mammals <- read_xlsx("Mammal matrix.xlsx", skip = 2) # mammal data
+
+```
+
+## Replace NAs with 0s in both datasets
+``` {r replace-na}
+man_strats <- man_strats %>% 
+  mutate_all(~replace(., is.na(.), 0))
+
+mammals[is.na(mammals)] <- 0
+```
+
+The risk score is calculated as follows: 
 Risk score = (Dt + Nt) / R  
 where:  
 * Dt = A/(D*F) + B/F  
 * Nt = C1/N + C2/N  
 
-## First calculate Dt
+## First calculate Dt  
+
+### Calculate F and D
+``` {r calc-D}
+calculate_F_D <- function(data) {
+  F <- data %>%
+    select(C_hab:R_hab) %>%
+    rowSums(.)
+  
+  D_temp <- data %>% 
+    select(C_BG:R_vertebrate) %>%  # select all dietary components cols
+    rowSums(.) # sum for each species
+  
+  D <- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
+  
+  return(data.frame(F,D))
+}
+```
+
 ### Calculate A
-### Calculate D
-### Calculate F
+``` {r calc-A}
+calculate_A <- function(strat) {
+  
+}
+```
 ### Calculate B
 
 ## Then calculate Nt
