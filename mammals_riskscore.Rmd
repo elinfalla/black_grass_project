@@ -1,0 +1,33 @@
+---
+title: "Farmland Biodiversity Health Index - <br> Mammal Risk Scores"
+author: "Elin Falla"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+fontsize: 11pt
+---
+First read in data and shit
+``` {r}
+
+
+
+```
+
+Risk score = (Dt + Nt) / R  
+where:  
+* Dt = A/(D*F) + B/F  
+* Nt = C1/N + C2/N  
+
+## First calculate Dt
+### Calculate A
+### Calculate D
+### Calculate F
+### Calculate B
+
+## Then calculate Nt
+### Calculate C1
+### Calculate C2
+### Calculate N
+
+## Finally calculate risk score
