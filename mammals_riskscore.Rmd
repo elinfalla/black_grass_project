@@ -25,8 +25,10 @@ library(tidyverse) # for data manipulation
 ## Read in required datasets  
 ``` {r read-in-data}
 man_strats <- read_xlsx("change.xlsx", 3) # farm management strategies
+man_strats <- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
 mammals <- read_xlsx("Mammal matrix.xlsx", skip = 2) # mammal data
+mammals <- mammals[mammals$Species...1 == "Harvest mouse" | mammals$Species...1 == "Wood mouse",]
 
 ```
 
@@ -50,17 +52,18 @@ where:
 ``` {r calc-D}
 calculate_F_D <- function(data) {
   F <- data %>%
-    select(C_hab:R_hab) %>%
+    select(C_hab : R_hab) %>%
     rowSums(.)
   
   D_temp <- data %>% 
-    select(C_BG:R_vertebrate) %>%  # select all dietary components cols
+    select(C_BG : R_vertebrate) %>%  # select all dietary components cols
     rowSums(.) # sum for each species
   
   D <- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
   
   return(data.frame(F,D))
 }
+calculate_F_D(mammals)
 ```
 
 ### Calculate A and B
@@ -73,7 +76,12 @@ calculate_A_B <- function(data, strat) {
   
   # subset diet and habitat columns from data
   diets_habs <- data %>%
-    select(C_BG:R_hab)
+    select(C_BG : R_hab)
+  
+  # subset relevant columns from strategy data
+  strat <- strat %>%
+    select(C_BG : R_hab) %>%
+    select(!c(C_AQ, M_AQ, H_AQ)) # THIS MAY CHANGE - remove AQ columns (except R_AQ) so cols align
   
   # column number of last diet column
   last_d_col <- ncol(diets_habs) - 4  # 4 habitat columns
@@ -89,26 +97,35 @@ calculate_A_B <- function(data, strat) {
   
   return(data.frame(A, B))
 }
+
 ```
 
 test code for calculate_A_B():
 ``` {r test-ab}
-test_strat <- man_strats %>% select(!c(C_AQ, M_AQ, H_AQ))
-test_strat <- test_strat[1, 2:26] # subset so columns are same as for data
+test_strat <- man_strats[1,]
 calculate_A_B(mammals, test_strat)
+
 ```
 
 ### Calculate Dt
 Dt = A/(D*F) + B/F  
 ``` {r calc-Dt}
 calculate_Dt <- function(data, strat) {
+  
   A_B <- calculate_A_B(data, strat)
   F_D <- calculate_F_D(data)
   
   calc_Dt <- cbind(A_B, F_D)
 
   Dt <- calc_Dt$A / (calc_Dt$D * calc_Dt$F) + calc_Dt$B / calc_Dt$F
-
+  
+  # replace infinite or NA values with 0
+  Dt <- 
+  ifelse(
+    is.nan(Dt) | is.infinite(Dt) == T,  # test
+    0, # if yes
+    Dt  # if no
+  )
   return(Dt)
 }
 
@@ -128,7 +145,7 @@ This uses '|', which is the 'or' function - returns 1 if at least 1 column (abov
 ``` {r calc-N}
 calculate_N <- function(data) {
   N_temp <- data %>%
-    select(C_N_AG:R_N_BG) %>%
+    select(C_N_AG : R_N_BG) %>%
     mutate(Crop = C_N_AG | C_N_BG,
            Margin = M_N_AG | M_N_BG,
            Hedge = H_N_AG | H_N_BG,
@@ -137,13 +154,116 @@ calculate_N <- function(data) {
   
   return(N_temp$N)
 }
+calculate_N(mammals)
 
 ```
 
-### Calculate C1
+### Calculate C1 and C2
+``` {r calc-C1C2}
+calculate_C1_C2 <- function(data, strat) {
+  
+  nesting <- data %>%
+    select(C_N_AG : R_N_BG)  # select nesting columns of mammal data
+ 
+  nest_effects <- strat %>%
+    select(C_N_AG : R_N_BG_S)  # select nesting columns of strategy data
+  
+  # calculate C1 - effects of reduced nesting success
+  nest_success <- nest_effects %>%
+    select(contains("_S"))  # select nesting success columns
 
-### Calculate C2
+      
+  C1_overlap <- t(apply(nesting, 1, function(row) row & nest_success)) 
+  C1 <- rowSums(C1_overlap)
+  
+  # calculate C2 - effects of loss of nesting habitat
+  nest_habs <- nest_effects %>%
+    select(!contains("_S"))  # select habitat loss columns
+
+  
+  C2_overlap <- t(apply(nesting, 1, function(row) row & nest_habs))
+  C2 <- rowSums(C2_overlap)
+  
+  return(data.frame(C1, C2))
+}
+
+```
+
+test calculate_C1_C2():
+``` {r test-C1C2}
+nest_test_strat <- man_strats[5,]
+nest_test_strat["H_N_AG_S"] <- -1
+nest_test_strat["M_N_BG"] <- -1
+calculate_C1_C2(mammals, nest_test_strat)
+```
+
+
+### Calculate Nt
+Nt = C1/N + C2/N
+``` {r calc-Nt}
+calculate_Nt <- function(data, strat) {
+  N <- calculate_N(data)
+  C1_C2 <- calculate_C1_C2(data, strat)
+  
+  calc_Nt <- cbind(N, C1_C2)
+  
+  Nt <- (calc_Nt$C1 / calc_Nt$N) + (calc_Nt$C2 / calc_Nt$N)
+  
+  # replace infinite or NA values with 0
+  Nt <- 
+    ifelse(
+      is.nan(Nt) | is.infinite(Nt) == T,  # test
+      0, # if yes
+      Nt  # if no
+    ) 
+  
+  return(Nt)
+}
+
+```
+
+test calculate_Nt():  
+``` {r test-Nt}
+calculate_Nt(mammals, nest_test_strat)
+```
 
 
 ## Finally calculate risk score
-when doing this, remember to prep man_strats - ie. same num cols as mammals in same order, and do 1 row at a time - COULD CHANGE SO FUNCTION TAKES IN ALL STRATS AND CALCULATES ROW WISE??
+This function can take multiple strategies and outputs risk scores for each species for each strategy
+risk <- (Dt + Nt) / R
+``` {r calc-riskscore}
+calculate_riskscores <- function(data, strategies) {
+  
+  # initialise riskscores dataframe, rows are species, cols are strategies
+  riskscores <- data.frame(matrix(NA, 
+                                  nrow = nrow(data), 
+                                  ncol = nrow(strategies) + 1)) # +1 to add in species names as first col
+  # put species names in first col
+  riskscores[,1] <- data[,1]
+  
+  #colnames(riskscores) <- as.character(strategies[1,]) # TODO
+  
+  # extract reliance (R) values from mammal data
+  R <- data[,"Reliance"]  
+  
+  for (strat in 1:nrow(strategies)) {
+    
+    Dt <- calculate_Dt(data, strategies[strat,])
+    Nt <- calculate_Nt(data, strategies[strat,])
+    
+    riskscores[,strat+1] <- (Dt + Nt) / R
+  }
+  
+  return(riskscores)
+}
+```
+
+### Test riskscores
+Calculate risk scores for the strategies used in Butler's paper and check they are the same.  
+``` {r test-risk}
+risks <- calculate_riskscores(mammals, man_strats[1,])
+risks
+total_risks <- rowSums(risks[,-1])
+total_risks
+```
+
