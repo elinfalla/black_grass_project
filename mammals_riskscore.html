@@ -169,10 +169,164 @@ pre code {
 </div>
 
 
-<p>First read in data and shit</p>
-<p>Risk score = (Dt + Nt) / R<br />
+<div id="set-up" class="section level2">
+<h2>Set-up</h2>
+<pre class="r"><code>rm(list = ls()) # clear env
+library(readxl) # for reading in Excel sheets
+library(tidyverse) # for data manipulation</code></pre>
+</div>
+<div id="read-in-required-datasets" class="section level2">
+<h2>Read in required datasets</h2>
+<pre class="r"><code>man_strats &lt;- read_xlsx(&quot;change.xlsx&quot;, 3) # farm management strategies
+
+mammals &lt;- read_xlsx(&quot;Mammal matrix.xlsx&quot;, skip = 2) # mammal data</code></pre>
+<pre><code>## New names:
+## * Species -&gt; Species...1
+## * Species -&gt; Species...2</code></pre>
+</div>
+<div id="replace-nas-with-0s-in-both-datasets" class="section level2">
+<h2>Replace NAs with 0s in both datasets</h2>
+<pre class="r"><code>man_strats &lt;- man_strats %&gt;% 
+  mutate_all(~replace(., is.na(.), 0))
+
+mammals[is.na(mammals)] &lt;- 0</code></pre>
+<p>The risk score is calculated as follows: Risk score = (Dt + Nt) / R<br />
 where:<br />
-* Dt = A/(D<em>F) + B/F </em> Nt = C1/N + C2/N</p>
+* Dt = A/(D<em>F) + B/F<br />
+</em> Nt = C1/N + C2/N</p>
+</div>
+<div id="first-calculate-dt" class="section level2">
+<h2>First calculate Dt</h2>
+<div id="calculate-f-and-d" class="section level3">
+<h3>Calculate F and D</h3>
+<pre class="r"><code>calculate_F_D &lt;- function(data) {
+  F &lt;- data %&gt;%
+    select(C_hab:R_hab) %&gt;%
+    rowSums(.)
+  
+  D_temp &lt;- data %&gt;% 
+    select(C_BG:R_vertebrate) %&gt;%  # select all dietary components cols
+    rowSums(.) # sum for each species
+  
+  D &lt;- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
+  
+  return(data.frame(F,D))
+}</code></pre>
+</div>
+<div id="calculate-a-and-b" class="section level3">
+<h3>Calculate A and B</h3>
+<p>Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy</p>
+<p>Overlap is found by applying the '&amp;' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap.</p>
+<pre class="r"><code>calculate_A_B &lt;- function(data, strat) {
+  
+  # subset diet and habitat columns from data
+  diets_habs &lt;- data %&gt;%
+    select(C_BG:R_hab)
+  
+  # column number of last diet column
+  last_d_col &lt;- ncol(diets_habs) - 4  # 4 habitat columns
+  
+  # find overlap
+  overlap &lt;- t(apply(diets_habs, 1, function(row) row &amp; strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+
+  # find A (sum diet cols of overlap)
+  A &lt;- rowSums(overlap[,1:last_d_col])
+  
+  # find B (sum habitat cols of overlap)
+  B &lt;- rowSums(overlap[,(last_d_col+1):ncol(diets_habs)])
+  
+  return(data.frame(A, B))
+}</code></pre>
+<p>test code for calculate_A_B():</p>
+<pre class="r"><code>test_strat &lt;- man_strats %&gt;% select(!c(C_AQ, M_AQ, H_AQ))
+test_strat &lt;- test_strat[1, 2:26] # subset so columns are same as for data
+calculate_A_B(mammals, test_strat)</code></pre>
+<pre><code>##    A B
+## 1  1 2
+## 2  1 2
+## 3  0 2
+## 4  0 2
+## 5  0 2
+## 6  0 2
+## 7  0 2
+## 8  1 2
+## 9  0 2
+## 10 0 1
+## 11 0 2
+## 12 0 2
+## 13 0 2
+## 14 0 2
+## 15 0 2
+## 16 0 2
+## 17 0 2
+## 18 1 2
+## 19 0 2
+## 20 1 2
+## 21 0 2
+## 22 0 2
+## 23 0 2
+## 24 0 2
+## 25 0 2
+## 26 0 2
+## 27 0 0
+## 28 0 2
+## 29 0 2
+## 30 0 2
+## 31 0 2
+## 32 0 2
+## 33 0 2
+## 34 0 2
+## 35 0 2
+## 36 0 2
+## 37 0 2
+## 38 0 2
+## 39 0 2
+## 40 0 1
+## 41 0 2
+## 42 0 2
+## 43 1 2
+## 44 0 2</code></pre>
+</div>
+<div id="calculate-dt" class="section level3">
+<h3>Calculate Dt</h3>
+<p>Dt = A/(D*F) + B/F</p>
+<pre class="r"><code>calculate_Dt &lt;- function(data, strat) {
+  A_B &lt;- calculate_A_B(data, strat)
+  F_D &lt;- calculate_F_D(data)
+  
+  calc_Dt &lt;- cbind(A_B, F_D)
+
+  Dt &lt;- calc_Dt$A / (calc_Dt$D * calc_Dt$F) + calc_Dt$B / calc_Dt$F
+
+  return(Dt)
+}</code></pre>
+<p>test calculate_Dt()</p>
+<pre class="r"><code>calculate_Dt(mammals, test_strat)</code></pre>
+<pre><code>##  [1] 0.7333333 0.8333333 0.5000000 0.5000000 0.5000000 0.6666667 0.5000000
+##  [8] 0.5500000 0.5000000 1.0000000 0.6666667 0.6666667 0.5000000 0.6666667
+## [15] 0.6666667 0.5000000 0.5000000 0.5833333 0.6666667 0.7500000 0.5000000
+## [22] 0.5000000 0.6666667 0.5000000 0.5000000 0.5000000 0.0000000 0.5000000
+## [29] 0.5000000 0.6666667 0.6666667 0.6666667 0.6666667 0.6666667 0.5000000
+## [36] 1.0000000 0.5000000 0.5000000 0.5000000 0.5000000 0.5000000 0.5000000
+## [43] 0.7500000 1.0000000</code></pre>
+</div>
+</div>
+<div id="then-calculate-nt" class="section level2">
+<h2>Then calculate Nt</h2>
+<div id="calculate-c1" class="section level3">
+<h3>Calculate C1</h3>
+</div>
+<div id="calculate-c2" class="section level3">
+<h3>Calculate C2</h3>
+</div>
+<div id="calculate-n" class="section level3">
+<h3>Calculate N</h3>
+</div>
+</div>
+<div id="finally-calculate-risk-score" class="section level2">
+<h2>Finally calculate risk score</h2>
+<p>when doing this, remember to prep man_strats - ie. same num cols as mammals in same order, and do 1 row at a time - COULD CHANGE SO FUNCTION TAKES IN ALL STRATS AND CALCULATES ROW WISE??</p>
+</div>
 
 
 

@@ -106,7 +106,7 @@ calculate_Dt <- function(data, strat) {
   F_D <- calculate_F_D(data)
   
   calc_Dt <- cbind(A_B, F_D)
-  print(calc_Dt)
+
   Dt <- calc_Dt$A / (calc_Dt$D * calc_Dt$F) + calc_Dt$B / calc_Dt$F
 
   return(Dt)
@@ -116,15 +116,34 @@ calculate_Dt <- function(data, strat) {
 
 test calculate_Dt()
 ``` {r test-dt}
-Dt <- calculate_Dt(mammals, test_strat)
-print(Dt)
+calculate_Dt(mammals, test_strat)
+
 ```
 ## Then calculate Nt
+Nt = C1/N + C2/N
 
+### Calculate N  
+This uses '|', which is the 'or' function - returns 1 if at least 1 column (above or below ground) is 1 for each nesting habitat.  
+
+``` {r calc-N}
+calculate_N <- function(data) {
+  N_temp <- data %>%
+    select(C_N_AG:R_N_BG) %>%
+    mutate(Crop = C_N_AG | C_N_BG,
+           Margin = M_N_AG | M_N_BG,
+           Hedge = H_N_AG | H_N_BG,
+           Riparian = R_N_AG | R_N_BG,
+           N = Crop + Margin + Hedge + Riparian)  # calculate N by summing up number of nesting habs
+  
+  return(N_temp$N)
+}
+
+```
 
 ### Calculate C1
+
 ### Calculate C2
-### Calculate N
+
 
 ## Finally calculate risk score
 when doing this, remember to prep man_strats - ie. same num cols as mammals in same order, and do 1 row at a time - COULD CHANGE SO FUNCTION TAKES IN ALL STRATS AND CALCULATES ROW WISE??
