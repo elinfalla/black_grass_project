@@ -178,11 +178,13 @@ library(tidyverse) # for data manipulation</code></pre>
 <div id="read-in-required-datasets" class="section level2">
 <h2>Read in required datasets</h2>
 <pre class="r"><code>man_strats &lt;- read_xlsx(&quot;change.xlsx&quot;, 3) # farm management strategies
+man_strats &lt;- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
 mammals &lt;- read_xlsx(&quot;Mammal matrix.xlsx&quot;, skip = 2) # mammal data</code></pre>
 <pre><code>## New names:
 ## * Species -&gt; Species...1
 ## * Species -&gt; Species...2</code></pre>
+<pre class="r"><code>#mammals &lt;- mammals[mammals$Species...1 == &quot;Harvest mouse&quot; | mammals$Species...1 == &quot;Wood mouse&quot;,]</code></pre>
 </div>
 <div id="replace-nas-with-0s-in-both-datasets" class="section level2">
 <h2>Replace NAs with 0s in both datasets</h2>
@@ -201,11 +203,11 @@ where:<br />
 <h3>Calculate F and D</h3>
 <pre class="r"><code>calculate_F_D &lt;- function(data) {
   F &lt;- data %&gt;%
-    select(C_hab:R_hab) %&gt;%
+    select(C_hab : R_hab) %&gt;%
     rowSums(.)
   
   D_temp &lt;- data %&gt;% 
-    select(C_BG:R_vertebrate) %&gt;%  # select all dietary components cols
+    select(C_BG : R_vertebrate) %&gt;%  # select all dietary components cols
     rowSums(.) # sum for each species
   
   D &lt;- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
@@ -221,7 +223,12 @@ where:<br />
   
   # subset diet and habitat columns from data
   diets_habs &lt;- data %&gt;%
-    select(C_BG:R_hab)
+    select(C_BG : R_hab)
+  
+  # subset relevant columns from strategy data
+  strat &lt;- strat %&gt;%
+    select(C_BG : R_hab) %&gt;%
+    select(!c(C_AQ, M_AQ, H_AQ)) # remove AQ columns (except R_AQ) so cols align
   
   # column number of last diet column
   last_d_col &lt;- ncol(diets_habs) - 4  # 4 habitat columns
@@ -229,103 +236,261 @@ where:<br />
   # find overlap
   overlap &lt;- t(apply(diets_habs, 1, function(row) row &amp; strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
 
-  # find A (sum diet cols of overlap)
+  # CALCULATE A (sum diet cols of overlap)
   A &lt;- rowSums(overlap[,1:last_d_col])
   
-  # find B (sum habitat cols of overlap)
+  # CALCULATE B (sum habitat cols of overlap)
   B &lt;- rowSums(overlap[,(last_d_col+1):ncol(diets_habs)])
   
   return(data.frame(A, B))
 }</code></pre>
 <p>test code for calculate_A_B():</p>
-<pre class="r"><code>test_strat &lt;- man_strats %&gt;% select(!c(C_AQ, M_AQ, H_AQ))
-test_strat &lt;- test_strat[1, 2:26] # subset so columns are same as for data
+<pre class="r"><code>test_strat &lt;- man_strats[1,]
 calculate_A_B(mammals, test_strat)</code></pre>
-<pre><code>##    A B
-## 1  1 2
-## 2  1 2
-## 3  0 2
-## 4  0 2
-## 5  0 2
-## 6  0 2
-## 7  0 2
-## 8  1 2
-## 9  0 2
-## 10 0 1
-## 11 0 2
-## 12 0 2
-## 13 0 2
-## 14 0 2
-## 15 0 2
-## 16 0 2
-## 17 0 2
-## 18 1 2
-## 19 0 2
-## 20 1 2
-## 21 0 2
-## 22 0 2
-## 23 0 2
-## 24 0 2
-## 25 0 2
-## 26 0 2
-## 27 0 0
-## 28 0 2
-## 29 0 2
-## 30 0 2
-## 31 0 2
-## 32 0 2
-## 33 0 2
-## 34 0 2
-## 35 0 2
-## 36 0 2
-## 37 0 2
-## 38 0 2
-## 39 0 2
-## 40 0 1
-## 41 0 2
-## 42 0 2
-## 43 1 2
-## 44 0 2</code></pre>
 </div>
 <div id="calculate-dt" class="section level3">
 <h3>Calculate Dt</h3>
 <p>Dt = A/(D*F) + B/F</p>
 <pre class="r"><code>calculate_Dt &lt;- function(data, strat) {
-  A_B &lt;- calculate_A_B(data, strat)
-  F_D &lt;- calculate_F_D(data)
   
-  calc_Dt &lt;- cbind(A_B, F_D)
+  A_B &lt;- calculate_A_B(data, strat)
+  A &lt;- A_B$A
+  B &lt;- A_B$B
+  
+  F_D &lt;- calculate_F_D(data)
+  F &lt;- F_D$F
+  D &lt;- F_D$D
 
-  Dt &lt;- calc_Dt$A / (calc_Dt$D * calc_Dt$F) + calc_Dt$B / calc_Dt$F
-
+  Dt &lt;- A/(D * F) + B/F
+  
+  # replace infinite or NA values with 0
+  Dt &lt;- 
+  ifelse(
+    is.nan(Dt) | is.infinite(Dt) == T,  # test
+    0, # if yes
+    Dt  # if no
+  )
   return(Dt)
 }</code></pre>
 <p>test calculate_Dt()</p>
 <pre class="r"><code>calculate_Dt(mammals, test_strat)</code></pre>
-<pre><code>##  [1] 0.7333333 0.8333333 0.5000000 0.5000000 0.5000000 0.6666667 0.5000000
-##  [8] 0.5500000 0.5000000 1.0000000 0.6666667 0.6666667 0.5000000 0.6666667
-## [15] 0.6666667 0.5000000 0.5000000 0.5833333 0.6666667 0.7500000 0.5000000
-## [22] 0.5000000 0.6666667 0.5000000 0.5000000 0.5000000 0.0000000 0.5000000
-## [29] 0.5000000 0.6666667 0.6666667 0.6666667 0.6666667 0.6666667 0.5000000
-## [36] 1.0000000 0.5000000 0.5000000 0.5000000 0.5000000 0.5000000 0.5000000
-## [43] 0.7500000 1.0000000</code></pre>
 </div>
 </div>
 <div id="then-calculate-nt" class="section level2">
 <h2>Then calculate Nt</h2>
-<div id="calculate-c1" class="section level3">
-<h3>Calculate C1</h3>
-</div>
-<div id="calculate-c2" class="section level3">
-<h3>Calculate C2</h3>
-</div>
+<p>Nt = C1/N + C2/N</p>
 <div id="calculate-n" class="section level3">
 <h3>Calculate N</h3>
+<p>This uses '|', which is the 'or' operator - returns 1 if at least 1 column (above or below ground) is 1 for each nesting habitat.</p>
+<pre class="r"><code>calculate_N &lt;- function(data) {
+  N_temp &lt;- data %&gt;%
+    select(C_N_AG : R_N_BG) %&gt;%
+    mutate(Crop = C_N_AG | C_N_BG,
+           Margin = M_N_AG | M_N_BG,
+           Hedge = H_N_AG | H_N_BG,
+           Riparian = R_N_AG | R_N_BG,
+           N = Crop + Margin + Hedge + Riparian)  # calculate N by summing up number of nesting habs
+  
+  return(N_temp$N)
+}</code></pre>
+</div>
+<div id="calculate-c1-and-c2" class="section level3">
+<h3>Calculate C1 and C2</h3>
+<p>Like for calculating A and B above, overlaps are calculated using the '&amp;' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.</p>
+<pre class="r"><code>calculate_C1_C2 &lt;- function(data, strat) {
+  
+  nesting &lt;- data %&gt;%
+    select(C_N_AG : R_N_BG)  # select nesting columns of mammal data
+ 
+  nest_effects &lt;- strat %&gt;%
+    select(C_N_AG : R_N_BG_S)  # select nesting columns of strategy data
+  
+  # CALCULATE C1 - effects of reduced nesting success
+  nest_success &lt;- nest_effects %&gt;%
+    select(contains(&quot;_S&quot;))  # select nesting success columns
+
+  C1_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_success))  # calculate overlap
+  C1 &lt;- rowSums(C1_overlap)  # sum overlaps to get C1
+  
+  # CALCULATE C2 - effects of loss of nesting habitat
+  nest_habs &lt;- nest_effects %&gt;%
+    select(!contains(&quot;_S&quot;))  # select habitat loss columns
+  
+  C2_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_habs))  # calculate overlap
+  C2 &lt;- rowSums(C2_overlap)  # sum overlaps to get C2
+  
+  return(data.frame(C1, C2))
+}</code></pre>
+<p>test calculate_C1_C2():</p>
+<pre class="r"><code>nest_test_strat &lt;- man_strats[5,]
+nest_test_strat[&quot;H_N_AG_S&quot;] &lt;- -1
+nest_test_strat[&quot;M_N_BG&quot;] &lt;- -1
+calculate_C1_C2(mammals, nest_test_strat)</code></pre>
+</div>
+<div id="calculate-nt" class="section level3">
+<h3>Calculate Nt</h3>
+<p>Nt = C1/N + C2/N</p>
+<pre class="r"><code>calculate_Nt &lt;- function(data, strat) {
+  
+  N &lt;- calculate_N(data)
+  
+  C1_C2 &lt;- calculate_C1_C2(data, strat)
+  C1 &lt;- C1_C2$C1
+  C2 &lt;- C1_C2$C2
+  
+  Nt &lt;- (C1 / N) + (C2 / N)
+  
+  # replace infinite or NA values with 0
+  Nt &lt;- 
+    ifelse(
+      is.nan(Nt) | is.infinite(Nt) == T,  # test
+      0, # if yes
+      Nt  # if no
+    ) 
+  
+  return(Nt)
+}</code></pre>
+<p>test calculate_Nt():</p>
+<pre class="r"><code>calculate_Nt(mammals, nest_test_strat)</code></pre>
 </div>
 </div>
 <div id="finally-calculate-risk-score" class="section level2">
 <h2>Finally calculate risk score</h2>
-<p>when doing this, remember to prep man_strats - ie. same num cols as mammals in same order, and do 1 row at a time - COULD CHANGE SO FUNCTION TAKES IN ALL STRATS AND CALCULATES ROW WISE??</p>
+<p>This function can take multiple strategies and outputs risk scores for each species for each strategy risk &lt;- (Dt + Nt) / R</p>
+<pre class="r"><code>calculate_riskscores &lt;- function(data, strategies) {
+  
+  # initialise riskscores dataframe, rows are species, cols are strategies
+  riskscores &lt;- data.frame(matrix(NA, 
+                                  nrow = nrow(data), 
+                                  ncol = nrow(strategies) + 1)) # +1 to add in species names as first col
+  # put species names in first col
+  riskscores[,1] &lt;- data[,1]
+  
+  # name columns
+  strat_names &lt;- strategies %&gt;% pull(agric_change)
+  colnames(riskscores) &lt;- c(&quot;species&quot;, strat_names)
+  
+  # extract reliance (R) values from mammal data
+  R &lt;- data[,&quot;Reliance&quot;]  
+  
+  # CALCULATE RISK SCORE for each strategy and put into riskscores dataframe
+  for (strat in 1:nrow(strategies)) {
+    
+    Dt &lt;- calculate_Dt(data, strategies[strat,])
+    Nt &lt;- calculate_Nt(data, strategies[strat,])
+    
+    riskscores[,strat+1] &lt;- (Dt + Nt) / R
+  }
+  
+  return(riskscores)
+}</code></pre>
+<div id="test-riskscores-are-correct" class="section level3">
+<h3>Test riskscores are correct</h3>
+<p>Calculate risk scores for the strategies used in Butler's paper and check they are the same.</p>
+<pre class="r"><code>riskscores &lt;- calculate_riskscores(mammals, man_strats)
+
+
+# Find total risk for each species (sum up all risks)
+riskscores$total_risk &lt;- rowSums(riskscores[,-1])
+
+# Display riskscores
+riskscores</code></pre>
+<pre><code>##                  species    aut_sow   inc_chem loss_nc_hab  drainage    hay_sil
+## 1                 Badger 0.20000000 0.13333333   0.6666667 0.2000000 0.16666667
+## 2              Bank vole 0.08333333 0.16666667   0.8333333 0.0000000 0.16666667
+## 3            Barbastelle 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 4             Bechsteins 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 5                Brandts 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 6             Brown hare 0.33333333 0.33333333   1.3333333 0.0000000 0.66666667
+## 7       Brown long-eared 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 8              Brown rat 0.27500000 0.10000000   1.1250000 0.5250000 0.25000000
+## 9     Chinese Water Deer 0.00000000 0.12500000   0.8750000 0.3750000 0.12500000
+## 10       Common dormouse 0.00000000 0.00000000   1.0000000 0.1111111 0.00000000
+## 11           Common mole 0.16666667 0.08333333   0.6666667 0.5000000 0.16666667
+## 12          Common shrew 0.33333333 0.08333333   1.0000000 0.5000000 0.33333333
+## 13            Daubentons 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 14           Fallow deer 0.00000000 0.16666667   0.3333333 0.0000000 0.16666667
+## 15            Field vole 0.33333333 0.16666667   1.0000000 0.0000000 0.33333333
+## 16     Greater horseshoe 0.00000000 0.25000000   0.7500000 1.0000000 0.25000000
+## 17   Grey long-eared bat 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 18         Harvest mouse 0.58333333 0.25000000   2.2500000 1.0000000 0.50000000
+## 19              Hedgehog 0.00000000 0.12500000   0.8333333 0.2500000 0.16666667
+## 20           House mouse 0.20833333 0.12500000   0.6666667 0.2500000 0.33333333
+## 21               Leisler 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 22      Lesser horseshoe 0.00000000 0.25000000   0.7500000 1.0000000 0.25000000
+## 23               Muntjac 0.00000000 0.11111111   0.5555556 0.0000000 0.11111111
+## 24 Nathusius pipistrelle 0.00000000 0.08333333   0.5833333 0.3333333 0.08333333
+## 25             Natterers 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 26               Noctule 0.00000000 0.25000000   1.7500000 1.0000000 0.25000000
+## 27                 Otter 0.00000000 0.00000000   1.5000000 1.5000000 0.00000000
+## 28           Pipistrelle 0.00000000 0.25000000   1.7500000 1.0000000 0.25000000
+## 29               Polecat 0.25000000 0.08333333   1.1250000 0.6250000 0.25000000
+## 30           Pygmy shrew 0.33333333 0.08333333   1.0000000 0.5000000 0.33333333
+## 31                Rabbit 0.16666667 0.16666667   0.6666667 0.0000000 0.16666667
+## 32              Red deer 0.00000000 0.11111111   0.2222222 0.0000000 0.11111111
+## 33               Red fox 0.00000000 0.12500000   0.8333333 0.2500000 0.16666667
+## 34              Roe deer 0.00000000 0.16666667   0.8333333 0.0000000 0.16666667
+## 35              Serotine 0.00000000 0.25000000   1.7500000 1.0000000 0.25000000
+## 36                  Sika 0.00000000 0.00000000   0.3333333 0.0000000 0.00000000
+## 37    Soprano pipstrelle 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 38                 Stoat 0.12500000 0.12500000   0.7500000 0.2500000 0.12500000
+## 39           Water shrew 0.00000000 0.05555556   0.5833333 0.4166667 0.08333333
+## 40            Water vole 0.00000000 0.00000000   1.0000000 0.7500000 0.00000000
+## 41                Weasel 0.16666667 0.12500000   0.7083333 0.1250000 0.12500000
+## 42             Whiskered 0.00000000 0.12500000   0.8750000 0.5000000 0.12500000
+## 43            Wood mouse 0.37500000 0.12500000   1.0000000 0.2500000 0.33333333
+## 44   Yellow-necked mouse 0.00000000 0.00000000   1.0000000 0.1111111 0.00000000
+##    inc_stocking total_risk
+## 1    0.13333333  1.5000000
+## 2    0.08333333  1.3333333
+## 3    0.12500000  1.7500000
+## 4    0.12500000  1.7500000
+## 5    0.12500000  1.7500000
+## 6    0.66666667  3.3333333
+## 7    0.12500000  1.7500000
+## 8    0.35000000  2.6250000
+## 9    0.00000000  1.5000000
+## 10   0.00000000  1.1111111
+## 11   0.16666667  1.7500000
+## 12   0.50000000  2.7500000
+## 13   0.12500000  1.7500000
+## 14   0.00000000  0.6666667
+## 15   0.33333333  2.1666667
+## 16   0.25000000  2.5000000
+## 17   0.12500000  1.7500000
+## 18   0.66666667  5.2500000
+## 19   0.12500000  1.5000000
+## 20   0.45833333  2.0416667
+## 21   0.12500000  1.7500000
+## 22   0.25000000  2.5000000
+## 23   0.00000000  0.7777778
+## 24   0.08333333  1.1666667
+## 25   0.12500000  1.7500000
+## 26   0.25000000  3.5000000
+## 27   0.00000000  3.0000000
+## 28   0.25000000  3.5000000
+## 29   0.37500000  2.7083333
+## 30   0.50000000  2.7500000
+## 31   0.00000000  1.1666667
+## 32   0.00000000  0.4444444
+## 33   0.12500000  1.5000000
+## 34   0.00000000  1.1666667
+## 35   0.25000000  3.5000000
+## 36   0.00000000  0.3333333
+## 37   0.12500000  1.7500000
+## 38   0.12500000  1.5000000
+## 39   0.08333333  1.2222222
+## 40   0.00000000  1.7500000
+## 41   0.12500000  1.3750000
+## 42   0.12500000  1.7500000
+## 43   0.45833333  2.5416667
+## 44   0.00000000  1.1111111</code></pre>
+<pre class="r"><code>riskscores[riskscores$species == &quot;Harvest mouse&quot;,]</code></pre>
+<pre><code>##          species   aut_sow inc_chem loss_nc_hab drainage hay_sil inc_stocking
+## 18 Harvest mouse 0.5833333     0.25        2.25        1     0.5    0.6666667
+##    total_risk
+## 18       5.25</code></pre>
+</div>
 </div>
 
 
