@@ -169,39 +169,64 @@ pre code {
 </div>
 
 
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>This script calculates risk scores associated with changes to farm management, for <strong>mammal</strong> species reliant on farmland.</p>
+<p><strong>Note:</strong> the script needs at least 2 species inputted to run.</p>
+<p>The method is from <strong>Butler, S. J. et al.</strong> 'A cross-taxonomic index for quantifying the health of farmland biodiversity.' J. Appl. Ecol. 46, 1154-1162 (2009) <a href="https://doi.org/10.1111/j.1365-2664.2009.01709.x" class="uri">https://doi.org/10.1111/j.1365-2664.2009.01709.x</a></p>
+<hr />
+<p>The <strong>risk score</strong> is calculated as follows:<br />
+<span class="math display">\[ Risk = \frac{D_t + N_t}{R}\]</span> where:<br />
+<span class="math inline">\(D_t\)</span> = the risk score associated with reduced food abundance or availability<br />
+<span class="math inline">\(N_t\)</span> = the risk score associated with reduced breeding success<br />
+<span class="math inline">\(R\)</span> = the species’ reliance on farmland habitat</p>
+<hr />
+<p><span class="math inline">\(D_t\)</span> is calculated as follows:<br />
+<span class="math display">\[D_t = \frac{A}{D*F} + \frac{B}{F}\]</span> <span class="math inline">\(D\)</span> = total number of dietary components used by the species<br />
+<span class="math inline">\(F\)</span> = total number of foraging habitat components used by the species<br />
+<span class="math inline">\(A\)</span> = number of points of coincidence between the impact on and species’ use of dietary components<br />
+<span class="math inline">\(B\)</span> = number of points of coincidence between the impact on and species’ use of foraging habitat components</p>
+<hr />
+<p><span class="math inline">\(N_t\)</span> is calculated as follows:<br />
+<span class="math display">\[N_t = \frac{C1}{N} + \frac{C2}{N}\]</span> <span class="math inline">\(N\)</span> = number of nesting habitat components used by the species<br />
+<span class="math inline">\(C1\)</span> = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat<br />
+<span class="math inline">\(C2\)</span> = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat</p>
+</div>
 <div id="set-up" class="section level2">
 <h2>Set-up</h2>
+<div id="load-packages" class="section level3">
+<h3>Load packages</h3>
 <pre class="r"><code>rm(list = ls()) # clear env
 library(readxl) # for reading in Excel sheets
 library(tidyverse) # for data manipulation</code></pre>
 </div>
-<div id="read-in-required-datasets" class="section level2">
-<h2>Read in required datasets</h2>
-<pre class="r"><code>man_strats &lt;- read_xlsx(&quot;change.xlsx&quot;, 3) # farm management strategies
+<div id="read-in-required-datasets" class="section level3">
+<h3>Read in required datasets</h3>
+<p>Load datasets and replace all NAs with 0s.</p>
+<pre class="r"><code># farm management strategies
+man_strats &lt;- read_xlsx(&quot;change.xlsx&quot;, 3) 
 man_strats &lt;- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
-mammals &lt;- read_xlsx(&quot;Mammal matrix.xlsx&quot;, skip = 2) # mammal data</code></pre>
+# mammal matrix data
+mammals &lt;- read_xlsx(&quot;Mammal matrix.xlsx&quot;, skip = 2) </code></pre>
 <pre><code>## New names:
 ## * Species -&gt; Species...1
 ## * Species -&gt; Species...2</code></pre>
-<pre class="r"><code>#mammals &lt;- mammals[mammals$Species...1 == &quot;Harvest mouse&quot; | mammals$Species...1 == &quot;Wood mouse&quot;,]</code></pre>
-</div>
-<div id="replace-nas-with-0s-in-both-datasets" class="section level2">
-<h2>Replace NAs with 0s in both datasets</h2>
-<pre class="r"><code>man_strats &lt;- man_strats %&gt;% 
+<pre class="r"><code># replace NAs with 0s in both datasets
+man_strats &lt;- man_strats %&gt;% 
   mutate_all(~replace(., is.na(.), 0))
 
 mammals[is.na(mammals)] &lt;- 0</code></pre>
-<p>The risk score is calculated as follows: Risk score = (Dt + Nt) / R<br />
-where:<br />
-* Dt = A/(D<em>F) + B/F<br />
-</em> Nt = C1/N + C2/N</p>
 </div>
-<div id="first-calculate-dt" class="section level2">
-<h2>First calculate Dt</h2>
+</div>
+<div id="step-1-calculate-d_t" class="section level2">
+<h2>Step 1: Calculate <span class="math inline">\(D_t\)</span></h2>
 <div id="calculate-f-and-d" class="section level3">
-<h3>Calculate F and D</h3>
+<h3>Calculate <span class="math inline">\(F\)</span> and <span class="math inline">\(D\)</span></h3>
+<p><span class="math inline">\(D\)</span> = total number of dietary components used by the species<br />
+<span class="math inline">\(F\)</span> = total number of foraging habitat components used by the species</p>
 <pre class="r"><code>calculate_F_D &lt;- function(data) {
+  
   F &lt;- data %&gt;%
     select(C_hab : R_hab) %&gt;%
     rowSums(.)
@@ -216,9 +241,11 @@ where:<br />
 }</code></pre>
 </div>
 <div id="calculate-a-and-b" class="section level3">
-<h3>Calculate A and B</h3>
-<p>Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy</p>
-<p>Overlap is found by applying the '&amp;' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap.</p>
+<h3>Calculate <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span></h3>
+<p><span class="math inline">\(A\)</span> = number of points of coincidence between the impact on and species’ use of dietary components<br />
+<span class="math inline">\(B\)</span> = number of points of coincidence between the impact on and species’ use of foraging habitat components</p>
+<p>In this function 'strat' is a single row from the management strategies database - i.e. one strategy</p>
+<p>Overlap is found by applying the '&amp;' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap. This strategy (which is also used to calculate <span class="math inline">\(C1\)</span> and <span class="math inline">\(C2\)</span> later on) assumes that the columns in the two datasets are aligned. There is therefore a check that this is the case, with a warning returned if not.</p>
 <pre class="r"><code>calculate_A_B &lt;- function(data, strat) {
   
   # subset diet and habitat columns from data
@@ -233,9 +260,16 @@ where:<br />
   # column number of last diet column
   last_d_col &lt;- ncol(diets_habs) - 4  # 4 habitat columns
   
+  # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
+  aligned &lt;- identical(colnames(diets_habs), colnames(strat))
+  
+  if (aligned == F) {
+    warning(&quot;WARNING: Mammal data and management strategy columns do not align/are not the same - A and B calculations will be incorrect&quot;)
+  }
+  
   # find overlap
   overlap &lt;- t(apply(diets_habs, 1, function(row) row &amp; strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
-
+  
   # CALCULATE A (sum diet cols of overlap)
   A &lt;- rowSums(overlap[,1:last_d_col])
   
@@ -244,13 +278,10 @@ where:<br />
   
   return(data.frame(A, B))
 }</code></pre>
-<p>test code for calculate_A_B():</p>
-<pre class="r"><code>test_strat &lt;- man_strats[1,]
-calculate_A_B(mammals, test_strat)</code></pre>
 </div>
-<div id="calculate-dt" class="section level3">
-<h3>Calculate Dt</h3>
-<p>Dt = A/(D*F) + B/F</p>
+<div id="calculate-d_t" class="section level3">
+<h3>Calculate <span class="math inline">\(D_t\)</span></h3>
+<p><span class="math display">\[D_t = \frac{A}{D*F} + \frac{B}{F}\]</span></p>
 <pre class="r"><code>calculate_Dt &lt;- function(data, strat) {
   
   A_B &lt;- calculate_A_B(data, strat)
@@ -272,15 +303,13 @@ calculate_A_B(mammals, test_strat)</code></pre>
   )
   return(Dt)
 }</code></pre>
-<p>test calculate_Dt()</p>
-<pre class="r"><code>calculate_Dt(mammals, test_strat)</code></pre>
 </div>
 </div>
-<div id="then-calculate-nt" class="section level2">
-<h2>Then calculate Nt</h2>
-<p>Nt = C1/N + C2/N</p>
+<div id="step-2-calculate-n_t" class="section level2">
+<h2>Step 2: Calculate <span class="math inline">\(N_t\)</span></h2>
 <div id="calculate-n" class="section level3">
-<h3>Calculate N</h3>
+<h3>Calculate <span class="math inline">\(N\)</span></h3>
+<p><span class="math inline">\(N\)</span> = number of nesting habitat components used by the species</p>
 <p>This uses '|', which is the 'or' operator - returns 1 if at least 1 column (above or below ground) is 1 for each nesting habitat.</p>
 <pre class="r"><code>calculate_N &lt;- function(data) {
   N_temp &lt;- data %&gt;%
@@ -295,8 +324,10 @@ calculate_A_B(mammals, test_strat)</code></pre>
 }</code></pre>
 </div>
 <div id="calculate-c1-and-c2" class="section level3">
-<h3>Calculate C1 and C2</h3>
-<p>Like for calculating A and B above, overlaps are calculated using the '&amp;' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.</p>
+<h3>Calculate <span class="math inline">\(C1\)</span> and <span class="math inline">\(C2\)</span></h3>
+<p><span class="math inline">\(C1\)</span> = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat</p>
+<p><span class="math inline">\(C2\)</span> = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat</p>
+<p>Like for calculating <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span> above, overlaps are calculated using the '&amp;' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.</p>
 <pre class="r"><code>calculate_C1_C2 &lt;- function(data, strat) {
   
   nesting &lt;- data %&gt;%
@@ -308,28 +339,41 @@ calculate_A_B(mammals, test_strat)</code></pre>
   # CALCULATE C1 - effects of reduced nesting success
   nest_success &lt;- nest_effects %&gt;%
     select(contains(&quot;_S&quot;))  # select nesting success columns
-
-  C1_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_success))  # calculate overlap
+      
+  # Check columns of nest_success and nesting are the same (if not aligned, overlap calculation will not be correct)
+  to_compare &lt;- gsub(pattern = &quot;_S&quot;, replacement = &quot;&quot;, colnames(nest_success))  # remove &quot;_S&quot; from nesting_success colnames to compare
+  aligned &lt;- identical(to_compare, colnames(nesting))
+  
+  if (aligned == F) {
+    warning(&quot;WARNING: Mammal data and management strategy columns do not align/are not the same - C1 calculations will be incorrect&quot;)
+  }
+  
+  # Calculate overlap
+  C1_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_success))  
   C1 &lt;- rowSums(C1_overlap)  # sum overlaps to get C1
+  
   
   # CALCULATE C2 - effects of loss of nesting habitat
   nest_habs &lt;- nest_effects %&gt;%
     select(!contains(&quot;_S&quot;))  # select habitat loss columns
+   
+  # Check columns of nest_habs and nesting are the same (if not aligned, overlap calculation will not be correct)
+  aligned &lt;- identical(colnames(nest_habs), colnames(nesting))
   
-  C2_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_habs))  # calculate overlap
+  if (aligned == F) {
+    warning(&quot;WARNING: Mammal data and management strategy columns do not align/are not the same - C2 calculations will be incorrect&quot;)
+  }
+  
+  # Calculate overlap
+  C2_overlap &lt;- t(apply(nesting, 1, function(row) row &amp; nest_habs))  
   C2 &lt;- rowSums(C2_overlap)  # sum overlaps to get C2
   
   return(data.frame(C1, C2))
 }</code></pre>
-<p>test calculate_C1_C2():</p>
-<pre class="r"><code>nest_test_strat &lt;- man_strats[5,]
-nest_test_strat[&quot;H_N_AG_S&quot;] &lt;- -1
-nest_test_strat[&quot;M_N_BG&quot;] &lt;- -1
-calculate_C1_C2(mammals, nest_test_strat)</code></pre>
 </div>
-<div id="calculate-nt" class="section level3">
-<h3>Calculate Nt</h3>
-<p>Nt = C1/N + C2/N</p>
+<div id="calculate-n_t" class="section level3">
+<h3>Calculate <span class="math inline">\(N_t\)</span></h3>
+<p><span class="math display">\[N_t = \frac{C1}{N} + \frac{C2}{N}\]</span></p>
 <pre class="r"><code>calculate_Nt &lt;- function(data, strat) {
   
   N &lt;- calculate_N(data)
@@ -337,8 +381,8 @@ calculate_C1_C2(mammals, nest_test_strat)</code></pre>
   C1_C2 &lt;- calculate_C1_C2(data, strat)
   C1 &lt;- C1_C2$C1
   C2 &lt;- C1_C2$C2
-  
-  Nt &lt;- (C1 / N) + (C2 / N)
+
+  Nt &lt;- (C1/N) + (C2/N)
   
   # replace infinite or NA values with 0
   Nt &lt;- 
@@ -350,13 +394,12 @@ calculate_C1_C2(mammals, nest_test_strat)</code></pre>
   
   return(Nt)
 }</code></pre>
-<p>test calculate_Nt():</p>
-<pre class="r"><code>calculate_Nt(mammals, nest_test_strat)</code></pre>
 </div>
 </div>
-<div id="finally-calculate-risk-score" class="section level2">
-<h2>Finally calculate risk score</h2>
-<p>This function can take multiple strategies and outputs risk scores for each species for each strategy risk &lt;- (Dt + Nt) / R</p>
+<div id="step-3-calculate-risk-score" class="section level2">
+<h2>Step 3: Calculate risk score</h2>
+<p>This function can take multiple strategies and outputs risk scores for each species for each strategy. It also (in the case that multiple strategies are inputted) calculates a <strong>total risk score</strong>, by summing the risk scores across all management strategies for each species.<br />
+<span class="math display">\[ Risk = \frac{D_t + N_t}{R}\]</span></p>
 <pre class="r"><code>calculate_riskscores &lt;- function(data, strategies) {
   
   # initialise riskscores dataframe, rows are species, cols are strategies
@@ -366,14 +409,14 @@ calculate_C1_C2(mammals, nest_test_strat)</code></pre>
   # put species names in first col
   riskscores[,1] &lt;- data[,1]
   
-  # name columns
+  # name columns of riskscores according to strategies
   strat_names &lt;- strategies %&gt;% pull(agric_change)
   colnames(riskscores) &lt;- c(&quot;species&quot;, strat_names)
   
   # extract reliance (R) values from mammal data
   R &lt;- data[,&quot;Reliance&quot;]  
   
-  # CALCULATE RISK SCORE for each strategy and put into riskscores dataframe
+  # CALCULATE RISK SCORES per strategy and store in riskscores dataframe
   for (strat in 1:nrow(strategies)) {
     
     Dt &lt;- calculate_Dt(data, strategies[strat,])
@@ -382,18 +425,20 @@ calculate_C1_C2(mammals, nest_test_strat)</code></pre>
     riskscores[,strat+1] &lt;- (Dt + Nt) / R
   }
   
+  # calculate total risk for each species by summing risk across all strategies (if more than one strategy)
+  if (nrow(strategies) &gt; 1) {
+    riskscores$total_risk &lt;- rowSums(riskscores[,-1])
+  }
+  
   return(riskscores)
 }</code></pre>
-<div id="test-riskscores-are-correct" class="section level3">
-<h3>Test riskscores are correct</h3>
-<p>Calculate risk scores for the strategies used in Butler's paper and check they are the same.</p>
-<pre class="r"><code>riskscores &lt;- calculate_riskscores(mammals, man_strats)
+<div id="test-risk-scores-are-correct" class="section level3">
+<h3>Test risk scores are correct</h3>
+<p>Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.</p>
+<pre class="r"><code># Calculate risk scores
+riskscores &lt;- calculate_riskscores(mammals, man_strats)
 
-
-# Find total risk for each species (sum up all risks)
-riskscores$total_risk &lt;- rowSums(riskscores[,-1])
-
-# Display riskscores
+# Display risk scores
 riskscores</code></pre>
 <pre><code>##                  species    aut_sow   inc_chem loss_nc_hab  drainage    hay_sil
 ## 1                 Badger 0.20000000 0.13333333   0.6666667 0.2000000 0.16666667
@@ -485,11 +530,6 @@ riskscores</code></pre>
 ## 42   0.12500000  1.7500000
 ## 43   0.45833333  2.5416667
 ## 44   0.00000000  1.1111111</code></pre>
-<pre class="r"><code>riskscores[riskscores$species == &quot;Harvest mouse&quot;,]</code></pre>
-<pre><code>##          species   aut_sow inc_chem loss_nc_hab drainage hay_sil inc_stocking
-## 18 Harvest mouse 0.5833333     0.25        2.25        1     0.5    0.6666667
-##    total_risk
-## 18       5.25</code></pre>
 </div>
 </div>
 

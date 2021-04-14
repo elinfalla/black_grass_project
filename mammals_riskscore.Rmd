@@ -7,12 +7,45 @@ output:
   word_document: default
 fontsize: 11pt
 ---
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Introduction  
+This script calculates risk scores associated with changes to farm management, for **mammal** species reliant on farmland.  
+
+**Note:** the script needs at least 2 species inputted to run.
+
+The method is from **Butler, S. J. et al.** 'A cross-taxonomic index for quantifying the health of farmland biodiversity.' J. Appl. Ecol. 46, 1154-1162 (2009) https://doi.org/10.1111/j.1365-2664.2009.01709.x  
+
+-----  
+ 
+The **risk score** is calculated as follows:  
+$$ Risk = \frac{D_t + N_t}{R}$$
+where:  
+$D_t$ = the risk score associated with reduced food abundance or availability  
+$N_t$ = the risk score associated with reduced breeding success  
+$R$ = the species’ reliance on farmland habitat  
+
+-----  
+
+$D_t$ is calculated as follows:    
+$$D_t = \frac{A}{D*F} + \frac{B}{F}$$
+$D$ = total number of dietary components used by the species  
+$F$ = total number of foraging habitat components used by the species  
+$A$ = number of points of coincidence between the impact on and species’ use of dietary components  
+$B$ = number of points of coincidence between the impact on and species’ use of foraging habitat components  
+
+-----  
+
+$N_t$ is calculated as follows:  
+$$N_t = \frac{C1}{N} + \frac{C2}{N}$$
+$N$ = number of nesting habitat components used by the species  
+$C1$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
+$C2$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat  
+
 ## Set-up
+### Load packages
 ```{r load-packages, message=FALSE}
 
 rm(list = ls()) # clear env
@@ -22,7 +55,8 @@ library(tidyverse) # for data manipulation
 ```
 
 
-## Read in required datasets  
+### Read in required datasets  
+Load datasets and replace all NAs with 0s.  
 ``` {r read-in-data}
 
 # farm management strategies
@@ -32,27 +66,19 @@ man_strats <- man_strats[1:6,]  # just include strategies of interest (Butler st
 # mammal matrix data
 mammals <- read_xlsx("Mammal matrix.xlsx", skip = 2) 
 
-```
 
-## Replace NAs with 0s in both datasets
-``` {r replace-na}
+# replace NAs with 0s in both datasets
 man_strats <- man_strats %>% 
   mutate_all(~replace(., is.na(.), 0))
 
 mammals[is.na(mammals)] <- 0
 ```
 
-The risk score is calculated as follows: 
-Risk score = (Dt + Nt) / R  
-where:  
-Dt = A/(D*F) + B/F  
-Nt = C1/N + C2/N  
+## Step 1: Calculate $D_t$ 
 
-## First calculate Dt  
-
-### Calculate F and D  
-D = total number of dietary components used by the species  
-F = total number of foraging habitat components used by the species  
+### Calculate $F$ and $D$  
+$D$ = total number of dietary components used by the species  
+$F$ = total number of foraging habitat components used by the species  
 ``` {r calc-D}
 calculate_F_D <- function(data) {
   
@@ -70,13 +96,13 @@ calculate_F_D <- function(data) {
 }
 ```
 
-### Calculate A and B  
-A = number of points of coincidence between the impact on and species’ use of dietary components  
-B = number of points of coincidence between the impact on and species’ use of foraging habitat components 
+### Calculate $A$ and $B$  
+$A$ = number of points of coincidence between the impact on and species’ use of dietary components  
+$B$ = number of points of coincidence between the impact on and species’ use of foraging habitat components  
 
-Remember, in this function 'strat' is a single row from the management strategies database - i.e. one strategy  
+In this function 'strat' is a single row from the management strategies database - i.e. one strategy  
 
-Overlap is found by applying the '&' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap.  
+Overlap is found by applying the '&' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap. This strategy (which is also used to calculate $C1$ and $C2$ later on) assumes that the columns in the two datasets are aligned. There is therefore a check that this is the case, with a warning returned if not.  
 
 ``` {r calc-A}
 calculate_A_B <- function(data, strat) {
@@ -114,15 +140,10 @@ calculate_A_B <- function(data, strat) {
 
 ```
 
-test code for calculate_A_B():
-``` {r test-ab, results="hide"}
-test_strat <- man_strats[1,]
-calculate_A_B(mammals, test_strat)
 
-```
+### Calculate $D_t$  
 
-### Calculate Dt
-Dt = A/(D*F) + B/F  
+$$D_t = \frac{A}{D*F} + \frac{B}{F}$$
 ``` {r calc-Dt}
 calculate_Dt <- function(data, strat) {
   
@@ -148,18 +169,13 @@ calculate_Dt <- function(data, strat) {
 
 ```
 
-test calculate_Dt()
-``` {r test-dt, results="hide"}
-calculate_Dt(mammals, test_strat)
 
-```
-## Then calculate Nt
-Nt = C1/N + C2/N
+## Step 2: Calculate $N_t$
 
-### Calculate N  
+### Calculate $N$ 
+$N$ = number of nesting habitat components used by the species 
+
 This uses '|', which is the 'or' operator - returns 1 if at least 1 column (above or below ground) is 1 for each nesting habitat.  
-
-N = number of nesting habitat components used by the species  
 
 ``` {r calc-N}
 calculate_N <- function(data) {
@@ -177,12 +193,12 @@ calculate_N <- function(data) {
 ```
 
 
-### Calculate C1 and C2  
-Like for calculating A and B above, overlaps are calculated using the '&' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.  
+### Calculate $C1$ and $C2$ 
+$C1$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
 
-C1 = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
+$C2$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat  
 
-C2 = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat  
+Like for calculating $A$ and $B$ above, overlaps are calculated using the '&' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.  
 
 ``` {r calc-C1C2}
 calculate_C1_C2 <- function(data, strat) {
@@ -230,17 +246,9 @@ calculate_C1_C2 <- function(data, strat) {
 
 ```
 
-test calculate_C1_C2():
-``` {r test-C1C2, results="hide"}
-nest_test_strat <- man_strats[5,]
-nest_test_strat["H_N_AG_S"] <- -1
-nest_test_strat["M_N_BG"] <- -1
-calculate_C1_C2(mammals, nest_test_strat)
-```
+### Calculate $N_t$
+$$N_t = \frac{C1}{N} + \frac{C2}{N}$$
 
-
-### Calculate Nt
-Nt = C1/N + C2/N
 ``` {r calc-Nt}
 calculate_Nt <- function(data, strat) {
   
@@ -265,15 +273,9 @@ calculate_Nt <- function(data, strat) {
 
 ```
 
-test calculate_Nt():  
-``` {r test-Nt, results="hide"}
-calculate_Nt(mammals, nest_test_strat)
-```
-
-
-## Finally calculate risk score
-This function can take multiple strategies and outputs risk scores for each species for each strategy
-risk <- (Dt + Nt) / R
+## Step 3: Calculate risk score
+This function can take multiple strategies and outputs risk scores for each species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
+$$ Risk = \frac{D_t + N_t}{R}$$
 ``` {r calc-riskscore}
 calculate_riskscores <- function(data, strategies) {
   
@@ -300,15 +302,17 @@ calculate_riskscores <- function(data, strategies) {
     riskscores[,strat+1] <- (Dt + Nt) / R
   }
   
-  # calculate total risk for each species by summing risk across all strategies
-  riskscores$total_risk <- rowSums(riskscores[,-1])
+  # calculate total risk for each species by summing risk across all strategies (if more than one strategy)
+  if (nrow(strategies) > 1) {
+    riskscores$total_risk <- rowSums(riskscores[,-1])
+  }
   
   return(riskscores)
 }
 ```
 
-### Test riskscores are correct
-Calculate risk scores for the strategies used in Butler's paper and check they are the same.  
+### Test risk scores are correct
+Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.  
 ``` {r test-risk}
 # Calculate risk scores
 riskscores <- calculate_riskscores(mammals, man_strats)
