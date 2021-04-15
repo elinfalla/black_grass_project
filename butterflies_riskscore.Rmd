@@ -1,0 +1,217 @@
+---
+title: "Farmland Biodiversity Health Index - <br> Mammal Risk Scores"
+author: "Elin Falla"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+fontsize: 11pt
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction  
+This script calculates risk scores associated with changes to farm management, for **butterfly** species reliant on farmland.  
+
+**Note:** the script needs at least 2 species inputted to run.
+
+The method is from **Butler, S. J. et al.** 'A cross-taxonomic index for quantifying the health of farmland biodiversity.' J. Appl. Ecol. 46, 1154-1162 (2009) https://doi.org/10.1111/j.1365-2664.2009.01709.x  
+
+## Set-up
+### Load packages
+```{r load-packages, message=FALSE}
+
+rm(list = ls()) # clear env
+library(readxl) # for reading in Excel sheets
+library(tidyverse) # for data manipulation
+
+```
+
+### Read in required datasets  
+Load datasets and replace all NAs with 0s.  
+``` {r read-in-data}
+
+# farm management strategies
+man_strats <- read_xlsx("change.xlsx", 5) 
+
+# butterfly matrix data
+butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3) 
+
+# forage plant locations
+plant_locs <- read_xlsx("forage_plant_location.xlsx")
+
+# replace NAs with 0s in both datasets
+man_strats <- man_strats %>% 
+  mutate_all(~replace(., is.na(.), 0))
+
+butterfly[is.na(butterfly)] <- 0
+```
+
+### Write function to create separate adult and larval datasets
+``` {r sep-a-l}
+separate_lifestages <- function(data) {
+  
+  # create separate dataframes for adults and larvae
+  adults <- data %>%
+    select(contains("Ad_"))
+  colnames(adults) <- gsub(pattern = "Ad_", replacement = "", colnames(adults))  # rename cols to not include "Ad_"
+
+  larvae <- data %>%
+    select(contains("L_"))
+  colnames(larvae) <- gsub(pattern = "L_", replacement = "", colnames(larvae))  # rename cols to not include "L_"
+ 
+  return(list(adults, larvae))
+}
+```
+## Calculate $P_t$ (for adults, $P_{ta}$, and larvae, $P_{tl}$)
+
+### Calculate $G$ and $H$
+$G$ = total number of life cycle components (i.e. sum of the number of generations in each activity period)
+$H$ = number of habitat components used by the species 
+
+``` {r calc-Ga-Gl}
+calculate_Ga_Gl_Ha_Hl <- function(data) {
+  generations <- 1 # FOR NOW
+
+  #separate the adult and larval lifestages into separate dataframes (in order to loop over them)
+  lifestages <- separate_lifestages(data)
+  
+  # create output dataframe
+  output <- data.frame(Ha = rep(NA, nrow(data)),
+                       Hl = rep(NA, nrow(data)),
+                       Ga = rep(NA, nrow(data)),
+                       Gl = rep(NA, nrow(data)))
+  
+  # calculate G and H for both adults and larvae
+  for (i in 1:length(lifestages)) {
+    
+    # calculate H
+    output[,i] <- lifestages[[i]] %>%
+      select(H_hab : R_hab) %>%
+      rowSums(.)
+ 
+    # calculate G
+    G_temp <- lifestages[[i]] %>%
+      select(H_early : R_late) %>%
+      rowSums(.)
+    
+    output[,i+2] <- (G_temp / output[,i]) * generations
+  }
+    
+  return(output)
+}
+```
+
+test G + H func:
+``` {r test-GH}
+calculate_Ga_Gl_Ha_Hl(butterfly)
+
+```
+
+### Calculate $G_t$
+$G_t$ = number of generations of a species active in the activity periods affected
+
+Here, 'strat' is a single management strategy - i.e. one row of the management strategy dataframe.
+``` {r calc-Gta-Gtl}
+calculate_Gta_Gtl <- function(data, strat) {
+  
+  generations <- 1 # FOR NOW
+  
+  # create separate adult and larvae dataframes
+  lifestages <- separate_lifestages(data)
+  
+  # select relevant cols of strat
+  activity_effects <- strat %>%
+      select(H_early : R_late)
+  
+  # create output dataframe
+  output <- data.frame(Gta = rep(NA, nrow(data)),
+                       Gtl = rep(NA, nrow(data)))
+  
+  # calculate Gt for bot h adults and larvae
+  for (i in 1:length(lifestages)) {
+    
+    activity <- lifestages[[i]] %>%
+      select(H_early : R_late)
+  
+  # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
+  aligned <- identical(colnames(activity), colnames(activity_effects))
+  
+  if (aligned == F) {
+    warning(paste0("WARNING: Butterfly data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Iteration = ", i, ", 1=adult, 2=larvae"))
+  }
+  
+  # find overlap
+  overlap <- t(apply(activity, 1, function(row) row & activity_effects)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  
+  # sum rows to find Gt and store in output dataframe
+  output[,i] <- rowSums(overlap)
+  
+  }
+  
+  return(output)
+  
+}
+```
+
+test calc Gt:
+``` {r test-Gt}
+calculate_Gta_Gtl(butterfly, man_strats[5,])[12,]
+```
+
+### Calculate Pt
+Pta = Gta/(Ga*Ha)
+Ptl = Gtl/(Gl*Hl)
+
+``` {r calc-Pt}
+calculate_Pta_Ptl <- function(data, strat) {
+  
+  G_H <- calculate_Ga_Gl_Ha_Hl(data)
+  Ga <- G_H$Ga
+  Gl <- G_H$Gl
+  Ha <- G_H$Ha
+  Hl <- G_H$Hl
+  
+  Gt <- calculate_Gta_Gtl(data, strat)
+  Gta <- Gt$Gta
+  Gtl <- Gt$Gtl
+  
+  # CALCULATE Pta
+  Pta = Gta / (Ga * Ha)
+  
+  # replace infinite or NA values with 0
+  Pta <- 
+  ifelse(
+    is.nan(Pta) | is.infinite(Pta) == T,  # test
+    0, # if yes
+    Pta  # if no
+  )
+
+  # CALCULATE Ptl
+  Ptl = Gtl / (Gl * Hl)
+  
+  # replace infinite or NA values with 0
+  Ptl <- 
+  ifelse(
+    is.nan(Ptl) | is.infinite(Ptl) == T,  # test
+    0, # if yes
+    Ptl  # if no
+  )
+  
+  return(data.frame(Pta, Ptl))
+}
+```
+
+
+## Calculate Ft (for a and l)
+### Calculate A
+$A$ = number of points of coincidence between the impact on and species’ use of forage plant families
+### Calculate F
+$F$ = points of coincidence between species habitat use and the location of its forage plants
+
+``` {r calc-Fa}
+calculate_Fa <- function(data, plant_locs) {
+  
+}
+```
