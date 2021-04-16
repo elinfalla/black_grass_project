@@ -39,13 +39,18 @@ man_strats <- read_xlsx("change.xlsx", 5)
 butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3) 
 
 # forage plant locations
-plant_locs <- read_xlsx("forage_plant_location.xlsx")
+plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
+plant_locs <- plant_locs[,-6]  # remove 'cropped area' column as not needed
+plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as this means the species isn't relevant to butterflies (bees only)
 
 # replace NAs with 0s in both datasets
 man_strats <- man_strats %>% 
   mutate_all(~replace(., is.na(.), 0))
 
 butterfly[is.na(butterfly)] <- 0
+
+plant_locs <- plant_locs %>% 
+  mutate_all(~replace(., is.na(.), 0))
 ```
 
 ### Write function to create separate adult and larval datasets
@@ -210,8 +215,48 @@ $A$ = number of points of coincidence between the impact on and species’ use o
 ### Calculate F
 $F$ = points of coincidence between species habitat use and the location of its forage plants
 
+Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants that are found in the species habitat(s).
 ``` {r calc-Fa}
 calculate_Fa <- function(data, plant_locs) {
   
+  # PUT IN CHECK THAT COLUMNS ALIGN?
+  
+  # subset butterfly data to habitat columns
+  habs <- data %>%
+    select(Ad_H_hab : Ad_R_hab)
+
+  # remove species name col of plant locs (so columns align with habs)
+  plant_locs <- plant_locs[,-1]
+  
+  # initialise output array
+  Fa <- 0
+  
+  # for every species (ie. every row in habs dataframe)
+  for (i in 1:nrow(habs)) {
+    locs <- plant_locs[,which(habs[i,] == 1)] # extract cols of plant_locs for which butterfly habs=1
+    
+    if(ncol(locs) > 1) {  # if species has more than one habitat
+
+      col <- locs[,1]  # set first column as current column
+      
+      # loop over columns, applying or operator successively, to find all plants species can forage on
+      for (j in 2:ncol(locs)) {  # start from second column
+        col <- col | locs[,j]
+      }
+      
+      # Fa is total number of plants = sum the result
+      Fa[i] <- sum(col)
+      
+    } 
+    else {  # if plant locations has a single column (ie. species found in 1 hab)
+      Fa[i] <- sum(locs)  # Fa is total number of plants
+    }
+   
+  }
+  return(Fa)
 }
+```
+
+``` {r test-Fa}
+calculate_Fa(butterfly, plant_locs)
 ```
