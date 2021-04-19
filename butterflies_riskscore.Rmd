@@ -47,7 +47,8 @@ plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as
 man_strats <- man_strats %>% 
   mutate_all(~replace(., is.na(.), 0))
 
-butterfly[is.na(butterfly)] <- 0
+butterfly <- butterfly %>% 
+  mutate_all(~replace(., is.na(.), 0))
 
 plant_locs <- plant_locs %>% 
   mutate_all(~replace(., is.na(.), 0))
@@ -75,6 +76,7 @@ separate_lifestages <- function(data) {
 $G$ = number of generations across all activity periods (ie. number of generations per year)
 $H$ = number of habitat components used by the species 
 
+REMEMBER TO FIX NUMBER OF GENERATIONS IN BUTTERFLY MATRIX
 
 how many diff gens of adults/larvae in a year - just the generations column in butt matrix
 
@@ -271,7 +273,7 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
   # split effects on species into general and damp effects
   general_effects <- overlap %>% select(H_hab:R_hab)
   damp_effects <- overlap %>% select(H_damp:R_damp)
-  
+
   # calculate Aa for each species
   for(species in 1:nrow(overlap)) {
 
@@ -299,7 +301,7 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
     Aa[species] <- sum(total_plants_affected)
     
   }
-    
+
   # initialise output arrays
   Fa <- 0
   
@@ -317,6 +319,7 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
     Fa[i] <- sum(all_plants)
    
   }
+  print("ere")
   return(data.frame(Fa, Aa))
 }
 ```
@@ -325,3 +328,87 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
 calculate_Fa_Aa(butterfly, plant_locs, man_strats[6,])
 ```
 
+
+calculate Al and Fl  
+does the overlap (Al) have to take into account where the species are - or if there's overlap can i assume that all species it feeds on are affected? probs not  
+``` {r calc-Fl-Al}
+calculate_Fl_Al <- function(data, plant_locs, strat) {
+  
+  # PUT IN ALIGNMENT CHECKS
+  
+  larval_plants <- data %>%
+    select(Aquifoliaceae : Violaceae)
+  
+  larval_habs <- data %>%
+    select(L_H_hab : L_R_hab, L_H_damp : L_R_damp)
+  
+  hab_effects <- strat %>%
+    select(H_hab : R_hab, H_damp : R_damp)
+  
+  Fl <- rowSums(larval_plants)
+  
+  # remember the species are subsetted when the dataset is read in, will have to change this if want additional larval species
+  
+  overlap <- data.frame(t(apply(larval_habs, 1, function(row) row & hab_effects)))
+  colnames(overlap) <- colnames(hab_effects)
+  
+  # split effects on species into general and damp effects
+  general_effects <- overlap %>% select(H_hab:R_hab)
+  damp_effects <- overlap %>% select(H_damp:R_damp)
+  
+  # initialise Al
+  Al <- 0
+  
+  for (species in 1:nrow(larval_habs)) {
+    
+    sp_general_effects <- general_effects[species,]
+    sp_damp_effects <- damp_effects[species,]
+
+    l_plant_locs <- plant_locs[which(larval_plants[species,] == 1),]
+    l_likes_damp <- l_plant_locs[,"likesdamp"]
+    print(l_likes_damp)
+    if (nrow(l_plant_locs) == 0) {
+      warning(paste("WARNING: Species", species, "has 0 forage plants. Cannot calculate Al"))
+      Al[species] <- 0
+      next  # go to next iteration of for loop
+    }
+    
+    l_plant_locs <- l_plant_locs[,-c(1,7)]  # remove names and 'likesdamp' cols so aligns
+
+
+    l_plant_locs_affected <- l_plant_locs[,which(sp_general_effects != 0)]
+    
+    if (ncol(l_plant_locs_affected) == 0) {
+      l_plant_locs_affected <- 0
+    }
+    
+    # or cols together to get all plant species affected
+    general_plants_affected <- apply_or_to_cols(l_plant_locs_affected)
+    
+    # do same for damp plants
+    l_damp_plants_affected <- l_plant_locs[,which(sp_damp_effects != 0)]
+    
+    if (ncol(l_damp_plants_affected) == 0) {
+      l_damp_plants_affected <- 0
+    }
+    # or cols together and select damp ones to get all damp plant species affected
+    damp_plants_affected <- apply_or_to_cols(l_damp_plants_affected)
+
+    damp_plants_affected <- damp_plants_affected & l_likes_damp$likesdamp == "yes"
+  print("aaa")
+
+    
+    # get total species affected
+    total_species_affected <- general_plants_affected | damp_plants_affected
+    print("aaaa")
+    Al[species] <- sum(total_species_affected)
+print("fuck")
+  }
+  
+  return(data.frame(Fl, Al))
+}
+```
+
+``` {r test-Al}
+calculate_Fl_Al(butterfly, plant_locs, man_strats[4,])
+```
