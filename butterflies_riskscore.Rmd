@@ -253,76 +253,60 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
   # remove species name col of plant locs (so columns align with habs)
   plant_locs <- plant_locs[,-1]
   
-  # subset butterfly data to habitat columns
+  # subset butterfly data to habitat (+ damp plants) columns
   habs <- data %>%
-    select(Ad_H_hab : Ad_R_hab, )
+    select(Ad_H_hab:Ad_R_hab, Ad_H_damp:Ad_R_damp)
 
-  # select hab cols of change data
+  # select hab + damp cols of change data
   hab_effects <- strat %>%
-    select(H_hab : R_hab)
-  damp_effects <- strat %>% 
-    select(H_damp : R_damp)
+    select(H_hab:R_hab, H_damp:R_damp)
 
-  effects <- list(hab_effects, damp_effects)
-  plants_affected <- data.frame(matrix(ncol = length(effects), nrow =nrow(hab_effects)))
-  
-  for (i in 1:length(effects)) {
-      overlap <- apply(habs, 1, function(row) row & effects[[i]])
-    for(species in 1:nrow(overlap)) {
-      
-      species <- overlap[species,]
-      
-      plant_locs_affected <- plant_locs[,which(species != 0)]
-      if (ncol(plant_locs_affected) == 0) {
-        plant_locs_affected <- 0
-      }
-      
-      plants_affected[,species] <- apply_or_to_cols(plant_locs_affected)
-      
-      if (i == 2) {  # if damp_effects
-        plants_affected <- plants_affected & plant_locs$likesdamp == "yes"
-      }
-      
-      
-      
-    }
-    
-  }
-  #total_plants_affected <- 
-
-  
-  # subset plant_locs to include only habitats affected by the strategy
-  locs_affected <- plant_locs[,which(hab_effects != 0)]
-  if (ncol(locs_affected) == 0) {
-    locs_affected <- 0
-  }
-  print("locs_affected:")
-  print(locs_affected)
-  print("end locs_affected")
-  
-  # find all plants affected by applying the or operator to all habitats affected
-  locs_plants_affected <- apply_or_to_cols(locs_affected)
-  
-  # do same for damp plants affected:
-  # subset affected habitats...
-  damp_affected <- plant_locs[,which(damp_effects != 0)]
-  if (ncol(damp_affected) == 0) {
-    damp_affected <- 0
-  }
-  # ...and use or operator to find all plants in those habitats
-  all_damp_affected <- apply_or_to_cols(damp_affected)
-  
-  # reduce this list to only plants with a preference for damp
-  damp_plants_affected <- all_damp_affected & plant_locs$likesdamp == "yes"
-  
-  # use or operator on plants and damp plants affected to get all plants affected  
-  all_plants_affected <- locs_plants_affected | damp_plants_affected
-  
-  # initialise output arrays
-  Fa <- 0
+  # initialise output
   Aa <- 0
   
-  # calculate Fa and Aa for every species (ie. every row in habs dataframe)
+  # find overlap between species habitat use and effects on habitat
+  overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
+  colnames(overlap) <- colnames(hab_effects)
+  
+  # split effects on species into general and damp effects
+  general_effects <- overlap %>% select(H_hab:R_hab)
+  damp_effects <- overlap %>% select(H_damp:R_damp)
+  
+  # calculate Aa for each species
+  for(species in 1:nrow(overlap)) {
+
+    sp_general_effects <- general_effects[species,]
+    sp_damp_effects <- damp_effects[species,]
+
+    # find all plants affected by general hab effects
+    plant_locs_affected <- plant_locs[,which(sp_general_effects != 0)]
+    if (ncol(plant_locs_affected) == 0) {
+      plant_locs_affected <- 0
+    }
+    plants_affected <- apply_or_to_cols(plant_locs_affected)
+    
+    # find all plants affected by damp plant effects
+    damp_plant_locs_affected <- plant_locs[,which(sp_damp_effects != 0)]
+    if (ncol(damp_plant_locs_affected) == 0) {
+      damp_plant_locs_affected <- 0
+    }
+    damp_plants_affected <- apply_or_to_cols(damp_plant_locs_affected)
+    damp_plants_affected <- damp_plants_affected & plant_locs$likesdamp == "yes"
+
+    # find Aa - total plants affected
+    total_plants_affected <- plants_affected | damp_plants_affected
+
+    Aa[species] <- sum(total_plants_affected)
+    
+  }
+    
+  # initialise output arrays
+  Fa <- 0
+  
+  # subset habs to just habitats (not damp plants)
+  habs <- habs %>% select(Ad_H_hab:Ad_R_hab)
+    
+  # calculate Fa for every species (ie. every row in habs dataframe
   for (i in 1:nrow(habs)) {
     
     locs <- plant_locs[,which(habs[i,] == 1)] # extract cols of plant_locs for which butterfly habs=1
@@ -331,10 +315,6 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
       
     # Fa is total number of plants = sum the result
     Fa[i] <- sum(all_plants)
-    
-    # Aa is the sum of the overlap between the plants used by the species (all_plants) and those          # affected by the change (all_plants_affected)
-    
-    Aa[i] <- sum(all_plants & all_plants_affected)
    
   }
   return(data.frame(Fa, Aa))
@@ -342,6 +322,6 @@ calculate_Fa_Aa <- function(data, plant_locs, strat) {
 ```
 
 ``` {r test-Fa}
-calculate_Fa_Aa(butterfly, plant_locs, man_strats[1,])
+calculate_Fa_Aa(butterfly, plant_locs, man_strats[6,])
 ```
 
