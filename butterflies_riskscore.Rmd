@@ -35,15 +35,18 @@ Load datasets and replace all NAs with 0s.
 # farm management strategies
 man_strats <- read_xlsx("change.xlsx", 5) 
 
-# butterfly matrix data
+# butterfly requirements matrix data
 butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3) 
 
 # forage plant locations
 plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
 plant_locs <- plant_locs[,-6]  # remove 'cropped area' column as not needed
-plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as this means the species isn't relevant to butterflies (bees only)
+#plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as this means the species isn't relevant to butterflies (bees only)
 
-# replace NAs with 0s in both datasets
+# butterfly forage plants
+butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
+
+# replace NAs with 0s in all datasets
 man_strats <- man_strats %>% 
   mutate_all(~replace(., is.na(.), 0))
 
@@ -52,21 +55,35 @@ butterfly <- butterfly %>%
 
 plant_locs <- plant_locs %>% 
   mutate_all(~replace(., is.na(.), 0))
+
+butterfly_plants <- butterfly_plants %>%
+  mutate_all(~replace(., is.na(.), 0))
 ```
 
 ### Write function to create separate adult and larval datasets
 ``` {r sep-a-l}
 separate_lifestages <- function(data) {
   
-  # create separate dataframes for adults and larvae
-  adults <- data %>%
+  ## Function to create separate datasets for adults and larvae
+  
+  if ("Lifestage" %in% colnames(data)) {  # this is the case for the butterfly forage plants matrix
+    adults <- data[data$Lifestage == "a",]
+    larvae <- data[data$Lifestage == "l",]
+  }
+  else {  # for the butterfly requirements matrix
+    adults <- data %>%
     select(contains("Ad_"))
-  colnames(adults) <- gsub(pattern = "Ad_", replacement = "", colnames(adults))  # rename cols to not include "Ad_"
+    
+    # rename cols to   not include "Ad_"
+    colnames(adults) <- gsub(pattern = "Ad_", replacement = "", colnames(adults)) 
 
-  larvae <- data %>%
+    larvae <- data %>%
     select(contains("L_"))
-  colnames(larvae) <- gsub(pattern = "L_", replacement = "", colnames(larvae))  # rename cols to not include "L_"
- 
+    
+    # rename cols to not include "L_"
+    colnames(larvae) <- gsub(pattern = "L_", replacement = "", colnames(larvae))  
+  }
+  
   return(list(adults, larvae))
 }
 ```
@@ -76,9 +93,8 @@ separate_lifestages <- function(data) {
 $G$ = number of generations across all activity periods (ie. number of generations per year)
 $H$ = number of habitat components used by the species 
 
-REMEMBER TO FIX NUMBER OF GENERATIONS IN BUTTERFLY MATRIX
 
-how many diff gens of adults/larvae in a year - just the generations column in butt matrix
+how many diff gens of adults/larvae in a year - just the generations column in butterfly matrix
 
 ``` {r calc-Ga-Gl}
 calculate_Ga_Gl_Ha_Hl <- function(data) {
@@ -97,7 +113,7 @@ calculate_Ga_Gl_Ha_Hl <- function(data) {
     
     # calculate H
     output[,i] <- lifestages[[i]] %>%
-      select(H_hab : R_hab) %>%
+      select(hab_start : hab_end) %>%
       rowSums(.)
  
     # calculate G (select generations col of respective df)
@@ -129,23 +145,25 @@ calculate_Gta_Gtl <- function(data, strat) {
   
   # select relevant cols of strat
   activity_effects <- strat %>%
-      select(H_early : R_late)
+    select(activity_start : activity_end) %>%
+    select(-c(activity_start, activity_end)) # remove start and end cols
   
   # create output dataframe
   output <- data.frame(Gta = rep(NA, nrow(data)),
                        Gtl = rep(NA, nrow(data)))
   
-  # calculate Gt for bot h adults and larvae
+  # calculate Gt for both adults and larvae
   for (i in 1:length(lifestages)) {
     
     activity <- lifestages[[i]] %>%
-      select(H_early : R_late)
+      select(activity_start : activity_end) %>%
+      select(-c(activity_start, activity_end))
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
   aligned <- identical(colnames(activity), colnames(activity_effects))
   
   if (aligned == F) {
-    warning(paste0("WARNING: Butterfly data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Iteration = ", i, ", 1=adult, 2=larvae"))
+    warning(paste0("WARNING: Butterfly data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Lifestage = ", i, ", 1=adult, 2=larvae"))
   }
   
   # find overlap
@@ -236,51 +254,51 @@ apply_or_to_cols <- function(data) {
 ## Calculate $F_t$ (for $a$ and $l$)
 
 ### Calculate $F$
-$F$ = points of coincidence between species habitat use and the location of its forage plants i.e. total number of forage plants used by the species (for each lifestage)
+$F$ = points of coincidence between species habitat use and the location of its forage plants 
 
 Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants that are found in the species habitat(s).
 
 Larvae have much more specific plant forage families.
 
 ``` {r calc-Fl-Fa}
-calculate_Fa_Fl <- function(data, plant_locs) {
-  
-  # PUT IN ALIGNMENT CHECKS
-  
-  # CALCULATE Fl
-  larval_plants <- data %>%
-    select(Aquifoliaceae : Violaceae)  
-  Fl <- rowSums(larval_plants)
-  
-  # CALCULATE Fa
-  # remove Poaceae (grasses) from plant species in plant_locs as adults don't forage on them
-  plant_locs <- plant_locs[plant_locs$plantfamily != "Poaceae",]
-  plant_locs <- plant_locs[,-1] # remove species name col of plant locs (so columns align with habs)
-  
-  # initialise output
-  Fa <- 0
-  
-  # subset butterfly data to just habitat cols
-  habs <- data %>% 
-    select(Ad_H_hab:Ad_R_hab)
-    
-  # calculate Fa for every species (ie. every row in habs dataframe)
-  for (i in 1:nrow(habs)) {
-    
-    locs <- plant_locs[,which(habs[i,] == 1)] # extract cols of plant_locs where butterfly habs=1
-    
-    all_plants <- apply_or_to_cols(locs)
-      
-    # Fa is total number of plants = sum the result
-    Fa[i] <- sum(all_plants)
-   
-  }
-  return(data.frame(Fa, Fl))
-}
+# calculate_Fa_Fl <- function(data, plant_locs) {
+#   
+#   # PUT IN ALIGNMENT CHECKS - OR JUST CHECK THE COLS ARE THE SAME AND MATCH THE COLUMNS UP?
+# 
+#   # CALCULATE Fl
+#   larval_plants <- data %>%
+#     select(Aquifoliaceae : Violaceae)  
+#   Fl <- rowSums(larval_plants)
+#   
+#   # CALCULATE Fa
+#   # remove Poaceae (grasses) from plant species in plant_locs as adults don't forage on them
+#   plant_locs <- plant_locs[plant_locs$plantfamily != "Poaceae",]
+#   plant_locs <- plant_locs[,-1] # remove species name col of plant locs (so columns align with habs)
+#   
+#   # initialise output
+#   Fa <- 0
+#   
+#   # subset butterfly data to just habitat cols
+#   habs <- data %>% 
+#     select(Ad_H_hab:Ad_R_hab)
+# 
+#   # calculate Fa for every species (ie. every row in habs dataframe)
+#   for (i in 1:nrow(habs)) {
+#     
+#     locs <- plant_locs[,which(habs[i,] == 1)] # extract cols of plant_locs where butterfly habs=1
+#     
+#     all_plants <- apply_or_to_cols(locs)
+#       
+#     # Fa is total number of plants = sum the result
+#     Fa[i] <- sum(all_plants)
+#    
+#   }
+#   return(data.frame(Fa, Fl))
+# }
 ```
 
 ``` {r test-Al}
-calculate_Fa_Fl(butterfly, plant_locs)
+# calculate_Fa_Fl(butterfly, plant_locs)
 
 
 ```
@@ -290,98 +308,144 @@ calculate_Fa_Fl(butterfly, plant_locs)
 $A$ = number of points of coincidence between the impact on and species’ use of forage plant families
 
 ``` {r calc-Al-Aa}
-calculate_Aa_Al <- function(data, plant_locs, strat) {
+calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
   
   # PUT IN CHECK THAT COLUMNS ALIGN
   
-  # separate adults and larvae cols of butterfly data
-  lifestages <- separate_lifestages(data)
+  # separate adults and larvae cols of butterfly data and butterfly plants data
+  lifestages_butterfly <- separate_lifestages(data)
+  lifestages_plants <- separate_lifestages(plants)
   
   # select hab + damp cols of change data
   hab_effects <- strat %>%
-    select(H_hab:R_hab, H_damp:R_damp)
+    select(hab_start:hab_end, damp_start:damp_end)
 
-  # select larval plants cols of butterfly data
-  larval_plants <- data %>%
-    select(Aquifoliaceae : Violaceae)
-
-  # check larval_plants cols == species col of plant_locs, print warning if not
-  plant_names <- plant_locs %>% pull(plantfamily)
+  # pull plant names from plant_locs and plants, to check they are the same
+  plant_locs_names <- plant_locs %>% pull(plantfamily)
+  plants_names <- colnames(plants %>% 
+                             select(species_start:species_end) %>% 
+                             select(-c(species_start, species_end)))
   
-  if (identical(colnames(larval_plants), plant_names) == F) {
+  # check plant names are the same, print warning if not
+  if (identical(plant_locs_names, plants_names) == F) {
+    warning("WARNING: columns of butterfly forage plants are not the same as rows of plant locations data, i.e. plant species are not the same. Calculations may be incorrect.")
     
-    warning("WARNING: columns of larval plants (in butterfly data) are not the same as rows of plant locations data. Calculations may be incorrect.")
-    
-    print("Cols of larval plant data:")
-    print(paste(colnames(larval_plants)))
-    print(paste("Rows of plant locations data:", plant_locs[,1]))
+    print("Cols of butterfly plant data:")
+    print(paste(plants_names))
+    print(paste("Rows of plant locations data:", plant_locs_names))
   }
-    
+  
   # initialise output dataframe
-  output <- data.frame(Aa = rep(NA, nrow(data)),
+  output <- data.frame(Fa = rep(NA, nrow(data)),
+                       Fl = rep(NA, nrow(data)),
+                       Aa = rep(NA, nrow(data)),
                        Al = rep(NA, nrow(data)))
 
-  # calculate A for each lifestage (adults and larvae)
-  for (lifestage in 1:length(lifestages)) {
+  # calculate F and A for each lifestage (adults and larvae)
+  for (lifestage in 1:length(lifestages_butterfly)) {
 
-    # subset data to hab and damp cols
-    habs <- lifestages[[lifestage]] %>%
-      select(H_hab:R_hab, H_damp:R_damp)
+    # subset butterfly requirements data to habitat and damp cols
+    habs <- lifestages_butterfly[[lifestage]] %>%
+      select(hab_start:hab_end, damp_start:damp_end)
+
+    
+    # select plant species cols from butterfly forage plants data
+    butterfly_plants <- lifestages_plants[[lifestage]] %>%
+    select(species_start : species_end) %>%
+    select(-c(species_start, species_end)) # remove marker cols
     
     # find overlap between species habitat use and effects on habitat
     overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
-    colnames(overlap) <- colnames(hab_effects)
-    
-    # split effects on species into general and damp effects
-    general_effects <- overlap %>% select(H_hab:R_hab)
-    damp_effects <- overlap %>% select(H_damp:R_damp)
-    
-    # calculate A for each species
-    for(species in 1:nrow(overlap)) {
+    colnames(overlap) <- colnames(habs)
   
+    # split effects on species into general and damp effects
+ 
+    general_effects <- overlap %>% 
+      select(hab_start : hab_end) %>%
+      select(-c(hab_start, hab_end))  # remove marker cols
+    
+    damp_effects <- overlap %>% 
+      select(damp_start : damp_end) %>%
+      select(-c(damp_start, damp_end))  # remove marker cols
+    
+    # calculate A and F for each species
+    for(species in 1:nrow(habs)) {
+
       sp_general_effects <- general_effects[species,]
       sp_damp_effects <- damp_effects[species,]
       
-      if (lifestage == 2) {  # if larval lifestage
-        
-        # remove species name col of plant locs (so columns align with habs)
-        no_name_plant_locs <- plant_locs[,-1] 
-        
-        # subset plant locs to only include plants the species larvae feeds on
-        sp_plant_locs <- no_name_plant_locs[which(larval_plants[species,] == 1),]
 
-        # if species has no forage plants, print warning and set A to 0
-        if (nrow(sp_plant_locs) == 0) { 
-          warning(paste("WARNING: Species", species, "has 0 forage plants. Al = 0
-                        "))
-          output[species, lifestage] <- 0
-          next  # go to next iteration of for loop
-        }
-      }
-      else {  # for adults, species forage on all plants in the habitat except Poaceae
-        sp_plant_locs <-  plant_locs[plant_locs$plantfamily != "Poaceae",]
-        sp_plant_locs <- sp_plant_locs[,-1] # remove species name column
-      }
-
-      # find all plants affected by general hab effects
-      plant_locs_affected <- sp_plant_locs[,which(sp_general_effects != 0)]
-      if (ncol(plant_locs_affected) == 0) {
-        plant_locs_affected <- 0
-      }
-      plants_affected <- apply_or_to_cols(plant_locs_affected)
-      
-      # find all plants affected by damp plant effects
-      damp_plant_locs_affected <- sp_plant_locs[,which(sp_damp_effects != 0)]
-      if (ncol(damp_plant_locs_affected) == 0) {
-        damp_plant_locs_affected <- 0
-      }
-      damp_plants_affected <- apply_or_to_cols(damp_plant_locs_affected)
-      damp_plants_affected <- damp_plants_affected & sp_plant_locs$likesdamp == "yes"
-      
-      # find A - sum of total plants affected
-      total_plants_affected <- plants_affected | damp_plants_affected
+      # remove species name col of plant locs (so columns align with habs)
+      no_name_plant_locs <- plant_locs[,-1] 
+     
+      # subset plant locs to only include plants the species forages on
+      sp_plant_locs <- no_name_plant_locs[which(butterfly_plants[species,] == 1),]
     
-      output[species, lifestage] <- sum(total_plants_affected)
+      # if species has no forage plants, print warning and set A and F to 0
+      if (nrow(sp_plant_locs) == 0) { 
+        warning(paste("WARNING: Species", species, "has 0 forage plants. Al = 0
+                      "))
+        output[species, lifestage] <- 0
+        next  # go to next iteration of for loop
+      }
+
+      # CALCULATE F
+      
+      # subet habitat to current species
+      sp_habs <- habs %>%
+        select(hab_start : hab_end) %>%
+        select(-c(hab_start, hab_end))
+      sp_habs <- sp_habs[species,]
+      
+      all_forage_plants <- sp_plant_locs[,which(sp_habs != 0)]
+      output[species, lifestage] <- sum(all_forage_plants) # don't include final col (likesdamp col)
+ 
+      # CALCULATE A
+      
+      # find all plants affected by general hab effects
+      sp_effects <- list(sp_general_effects, sp_damp_effects)
+      plants_affected <- c(NA, NA)
+      
+      for (effect in 1:length(sp_effects)) {
+
+        plant_locs_affected <- sp_plant_locs[,which(sp_effects[[effect]] != 0)]
+
+        if (ncol(plant_locs_affected) == 0) {
+ 
+          plants_affected[effect] <- 0
+          next  # if no plants affected, skip to next iteration (next effect)
+        }
+        
+        if (effect == 2) {  # if damp effects, need to subset to only damp plants
+          damp_plants_affected <- plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
+
+          plants_affected[effect] <- sum(damp_plants_affected)
+        }
+        else {
+          plants_affected[effect] <- sum(plant_locs_affected)
+        }
+        
+      }
+      total_plants_affected <- sum(plants_affected)
+      
+      # plant_locs_affected <- sp_plant_locs[,which(sp_general_effects != 0)]
+      # if (ncol(plant_locs_affected) == 0) {
+      #   plant_locs_affected <- 0
+      # }
+      # plants_affected <- sum(plant_locs_affected)
+      # 
+      # # find all plants affected by damp plant effects
+      # damp_plant_locs_affected <- sp_plant_locs[,which(sp_damp_effects != 0)]
+      # if (ncol(damp_plant_locs_affected) == 0) {
+      #   damp_plant_locs_affected <- 0
+      # }
+      # damp_plants_affected <- damp_plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
+      # damp_plants_affected <- sum(damp_plants_affected)
+      # 
+      # # find A - sum of total plants affected
+      # total_plants_affected <- sum(plants_affected, damp_plants_affected)
+    
+      output[species, lifestage+2] <- total_plants_affected
     }
   }
   return(output)
@@ -389,7 +453,7 @@ calculate_Aa_Al <- function(data, plant_locs, strat) {
 ```
 
 ``` {r test-Fa}
-calculate_Aa_Al(butterfly, plant_locs, man_strats[2,])
+calculate_Aa_Al(butterfly, butterfly_plants, plant_locs, man_strats[2,])
 ```
 
 ### Calculate $F_t$
