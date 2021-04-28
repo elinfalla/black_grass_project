@@ -40,7 +40,7 @@ butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3)
 
 # forage plant locations
 plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
-plant_locs <- plant_locs[,-6]  # remove 'cropped area' column as not needed
+#plant_locs <- plant_locs[,-6]  # remove 'cropped area' column as not needed
 #plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as this means the species isn't relevant to butterflies (bees only)
 
 # butterfly forage plants
@@ -308,7 +308,7 @@ Larvae have much more specific plant forage families.
 $A$ = number of points of coincidence between the impact on and species’ use of forage plant families
 
 ``` {r calc-Al-Aa}
-calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
+calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
   
   # PUT IN CHECK THAT COLUMNS ALIGN
   
@@ -359,7 +359,6 @@ calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
     colnames(overlap) <- colnames(habs)
   
     # split effects on species into general and damp effects
- 
     general_effects <- overlap %>% 
       select(hab_start : hab_end) %>%
       select(-c(hab_start, hab_end))  # remove marker cols
@@ -386,18 +385,31 @@ calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
         warning(paste("WARNING: Species", species, "has 0 forage plants. Al = 0
                       "))
         output[species, lifestage] <- 0
+        output[species, lifestage+2] <- 0
         next  # go to next iteration of for loop
       }
 
       # CALCULATE F
       
-      # subet habitat to current species
+      # subset habitat to current species
       sp_habs <- habs %>%
         select(hab_start : hab_end) %>%
         select(-c(hab_start, hab_end))
       sp_habs <- sp_habs[species,]
       
-      all_forage_plants <- sp_plant_locs[,which(sp_habs != 0)]
+      # remove 'cropped area' habitat (col) so the sp_plant_loc cols align with sp_habs (species habitat)
+      no_crops_plant_locs <- sp_plant_locs %>%
+        select(-croppedarea)
+      
+      # subset sp_plant_locs to only habitats occupied by the species
+      all_forage_plants <- no_crops_plant_locs[,which(sp_habs != 0)]
+      
+      # if both grass and arable fields are selected (are part of species habitat), then remove them and replace with 'croppedarea' col
+      if (has_name(all_forage_plants, "grassfields") && has_name(all_forage_plants, "arablefields")) {
+        all_forage_plants <- all_forage_plants %>%
+          select(-c(grassfields, arablefields)) %>%
+          cbind(., sp_plant_locs$croppedarea)
+      }
       output[species, lifestage] <- sum(all_forage_plants) # don't include final col (likesdamp col)
  
       # CALCULATE A
@@ -427,23 +439,6 @@ calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
         
       }
       total_plants_affected <- sum(plants_affected)
-      
-      # plant_locs_affected <- sp_plant_locs[,which(sp_general_effects != 0)]
-      # if (ncol(plant_locs_affected) == 0) {
-      #   plant_locs_affected <- 0
-      # }
-      # plants_affected <- sum(plant_locs_affected)
-      # 
-      # # find all plants affected by damp plant effects
-      # damp_plant_locs_affected <- sp_plant_locs[,which(sp_damp_effects != 0)]
-      # if (ncol(damp_plant_locs_affected) == 0) {
-      #   damp_plant_locs_affected <- 0
-      # }
-      # damp_plants_affected <- damp_plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
-      # damp_plants_affected <- sum(damp_plants_affected)
-      # 
-      # # find A - sum of total plants affected
-      # total_plants_affected <- sum(plants_affected, damp_plants_affected)
     
       output[species, lifestage+2] <- total_plants_affected
     }
@@ -453,20 +448,33 @@ calculate_Aa_Al <- function(data, plants, plant_locs, strat) {
 ```
 
 ``` {r test-Fa}
-calculate_Aa_Al(butterfly, butterfly_plants, plant_locs, man_strats[2,])
+res <- calculate_Aa_Al_Fa_Fl(butterfly, butterfly_plants, plant_locs, man_strats[3, ])
+res
+
+butler_Fa <- c(73, 27, 73, 59, 29, 41, 73, 59, 29, 73, 56, 15, 59, 73, 73, 70, 56, 29, 29, 73, 73, 41, 15, 55)
+all.equal(res$Fa, butler_Fa)
+which(res$Fa != butler_Fa) 
+
+
+butler_Fl <- c(1, 1, 6, 2, 2, 1, 2, 6, 2, 2, 2, 1, 2, 3, 2, 3, 2, 2, 2, 2, 3, 1, 1, 1)
+all.equal(res$Fl, butler_Fl)
+which(res$Fl != butler_Fl) 
+
 ```
 
 ### Calculate $F_t$
  
 ``` {r calc-Ft}
-calculate_Fta_Ftl <- function(data, plant_locs, strat) {
-  F <- calculate_Fa_Fl(data, plant_locs)
-  Fa <- F$Fa
-  Fl <- F$Fl
+calculate_Fta_Ftl <- function(data, plants, plant_locs, strat) {
+  # F <- calculate_Fa_Fl(data, plant_locs)
+  # Fa <- F$Fa
+  # Fl <- F$Fl
 
-  A <- calculate_Aa_Al(data, plant_locs, strat)
-  Aa <- A$Aa
-  Al <- A$Al
+  A_F <- calculate_Aa_Al_Fa_Fl(data, plants, plant_locs, strat)
+  Aa <- A_F$Aa
+  Al <- A_F$Al
+  Fa <- A_F$Fa
+  Fl <- A_F$Fl
 
   # CALCULATE Fta
   Fta <- Aa / Fa
@@ -495,12 +503,12 @@ calculate_Fta_Ftl <- function(data, plant_locs, strat) {
 ```
 
 ``` {r test-Ft}
-calculate_Fta_Ftl(butterfly, plant_locs, man_strats[1,])
+calculate_Fta_Ftl(butterfly, butterfly_plants, plant_locs, man_strats[1,])
 ```
 
 ## Calculate risk score
 ``` {r calc-riskscore}
-calc_butterfly_riskscore <- function(data, plant_locs, strategies) {
+calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
   # initialise riskscores dataframe, rows are species, cols are strategies
   riskscores <- data.frame(matrix(NA, 
@@ -528,7 +536,7 @@ calc_butterfly_riskscore <- function(data, plant_locs, strategies) {
     Pta <- Pt$Pta
     Ptl <- Pt$Ptl
     
-    Ft <- calculate_Fta_Ftl(data, plant_locs, strategies[strat,])
+    Ft <- calculate_Fta_Ftl(data, plants, plant_locs, strategies[strat,])
     Fta <- Ft$Fta
     Ftl <- Ft$Ftl
     
@@ -546,5 +554,17 @@ calc_butterfly_riskscore <- function(data, plant_locs, strategies) {
 ```
 
 ``` {r test-riskscore}
-calc_butterfly_riskscore(butterfly, plant_locs, man_strats)
+risk <- calc_butterfly_riskscore(butterfly, butterfly_plants, plant_locs, man_strats)
+risk
+
+risk$species_latin <- c("Gonepteryx_rhamni", "Thecla_betulae", "Polygonum_c_album", "Polyommatus_icarus", "Thymelicus_lineola", 
+                        "Pyronia_tithonus", "Pieris_napi", "Celastrina_argiolus", "Ochlodes_sylvanus", "Pieris_brassicae",
+                        "Melanargia_galathea", "Euphydryas_aurina", "Maniola_jurtina", "Anthocharis_cardamines", "Aglais_io", 
+                        "Aphantopus_hyperantus", "Lycaena_phlaeas", "Coenonympha_pamphilus", "Thymelicus_sylvestris", "Aglais_urticae",
+                        "Pieris_rapae", "Pararge_aegeria", "Lasiommata_megera", "Satyrium_w_album")
+
+# risk_sorted <- risk[order(risk$species_latin),]
+# butler_risk <- c(2.19, 1.65, 3.81, 2.01, 1.42, 1.44, 2.10, 3.53, 1.67, 2.18, 3.03, 1.85, 2.02, 1.85, 2.10, 1.56, 2.34, 1.86, 1.65, 1.06, 2.42, 2.15, 2.10, 2.10)
+# 
+# butler_risk == round(risk_sorted$total_risk, 2)
 ```
