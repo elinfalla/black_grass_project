@@ -18,6 +18,28 @@ This script calculates risk scores associated with changes to farm management, f
 
 The method is from **Butler, S. J. et al.** 'A cross-taxonomic index for quantifying the health of farmland biodiversity.' J. Appl. Ecol. 46, 1154-1162 (2009) https://doi.org/10.1111/j.1365-2664.2009.01709.x  
 
+-----
+
+The risk score is calculated as follows:  
+$$ Risk = \frac{P_{ta} + F_{ta}}{R_a} + \frac{P_{tl} + F_{tl}}{R_l}$$
+where subscript "l" refers to larvae and subscript "a" refers to adults. The risk score is hence the sum of the risk scores for the adult and larval stage for a particular species, where:  
+$P_t$ = the risk score associated with reduced foraging activity potential 
+$F_t$ = the risk score associated with reduction in forage plant availability
+$R$ = the species’ reliance on farmland habitat  
+
+$P_t$ is calculated as follows:  
+$$P_t = \frac{G_t}{G*H}$$
+$G_t$ = total number of generations of the species' given life stage (i.e. $G_{ta}$ for adults, $G_{tl}$ for larvae) active in the activity periods affected
+$G$ = number of generations of the life stage across all activity periods (i.e. per year)
+$H$ = number of habitat components used by the species' life stage  
+
+-----  
+
+$F_t$ is calculated as follows:  
+$$N_t = \frac{A}{F}$$
+$A$ = number of points of coincidence between impact on and species life stage's use of forage plant families  
+$F$ = number of points of coincidence between species life stage's habitat use and the location of its forage plants  
+
 ## Set-up
 ### Load packages
 ```{r load-packages, message=FALSE}
@@ -227,87 +249,19 @@ calculate_Pta_Ptl <- function(data, strat) {
 }
 ```
 
-``` {r or-cols-func}
-apply_or_to_cols <- function(data) {
-  
-  # if data isn't a dataframe, return it
-  if (is.data.frame(data) == F) {
-    return(data)
-  }
-  # if data has only 1 column, return it
-  if (ncol(data) <= 1) {
-    return(data)
-  }
-  
-  result <- data[,1]  # set first column as current column
-  
-  # use or operator across all columns to find all non-zero instances, put into a single col
-    for (i in 2:ncol(data)) {
-      result <- result | data[,i]
-    }
-  
-  return(result)
-  
-}
-```
 
 ## Calculate $F_t$ (for $a$ and $l$)
 
-### Calculate $F$
+### Calculate $F$ and $A$
 $F$ = points of coincidence between species habitat use and the location of its forage plants 
+$A$ = number of points of coincidence between the impact on and species’ use of forage plant families
 
-Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants that are found in the species habitat(s).
+Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants that are found in the species habitat(s) that all butterflies will forage on.
 
 Larvae have much more specific plant forage families.
 
-``` {r calc-Fl-Fa}
-# calculate_Fa_Fl <- function(data, plant_locs) {
-#   
-#   # PUT IN ALIGNMENT CHECKS - OR JUST CHECK THE COLS ARE THE SAME AND MATCH THE COLUMNS UP?
-# 
-#   # CALCULATE Fl
-#   larval_plants <- data %>%
-#     select(Aquifoliaceae : Violaceae)  
-#   Fl <- rowSums(larval_plants)
-#   
-#   # CALCULATE Fa
-#   # remove Poaceae (grasses) from plant species in plant_locs as adults don't forage on them
-#   plant_locs <- plant_locs[plant_locs$plantfamily != "Poaceae",]
-#   plant_locs <- plant_locs[,-1] # remove species name col of plant locs (so columns align with habs)
-#   
-#   # initialise output
-#   Fa <- 0
-#   
-#   # subset butterfly data to just habitat cols
-#   habs <- data %>% 
-#     select(Ad_H_hab:Ad_R_hab)
-# 
-#   # calculate Fa for every species (ie. every row in habs dataframe)
-#   for (i in 1:nrow(habs)) {
-#     
-#     locs <- plant_locs[,which(habs[i,] == 1)] # extract cols of plant_locs where butterfly habs=1
-#     
-#     all_plants <- apply_or_to_cols(locs)
-#       
-#     # Fa is total number of plants = sum the result
-#     Fa[i] <- sum(all_plants)
-#    
-#   }
-#   return(data.frame(Fa, Fl))
-# }
-```
 
-``` {r test-Al}
-# calculate_Fa_Fl(butterfly, plant_locs)
-
-
-```
-
-
-### Calculate $A$
-$A$ = number of points of coincidence between the impact on and species’ use of forage plant families
-
-``` {r calc-Al-Aa}
+``` {r calc-Al-Aa-Fa-Fl}
 calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
   
   # PUT IN CHECK THAT COLUMNS ALIGN
@@ -341,13 +295,12 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
                        Aa = rep(NA, nrow(data)),
                        Al = rep(NA, nrow(data)))
 
-  # calculate F and A for each lifestage (adults and larvae)
+  # loop over lifestages (adults and larvae) to calculate F and A for each
   for (lifestage in 1:length(lifestages_butterfly)) {
 
-    # subset butterfly requirements data to habitat and damp cols
+    # subset appropriate butterfly requirements data to habitat and damp cols
     habs <- lifestages_butterfly[[lifestage]] %>%
       select(hab_start:hab_end, damp_start:damp_end)
-
     
     # select plant species cols from butterfly forage plants data
     butterfly_plants <- lifestages_plants[[lifestage]] %>%
@@ -414,7 +367,7 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
  
       # CALCULATE A
       
-      # find all plants affected by general hab effects
+      # find all plants affected by general and damp hab effects
       sp_effects <- list(sp_general_effects, sp_damp_effects)
       plants_affected <- c(NA, NA)
       
@@ -438,6 +391,7 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
         }
         
       }
+      # sum plants affected by general and damp effects to get total effects
       total_plants_affected <- sum(plants_affected)
     
       output[species, lifestage+2] <- total_plants_affected
@@ -553,6 +507,8 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
 ```
 
+### Test risk score
+Test scores against Butler's risk scores to ensure method is correct.
 ``` {r test-riskscore}
 risk <- calc_butterfly_riskscore(butterfly, butterfly_plants, plant_locs, man_strats)
 risk
