@@ -116,8 +116,6 @@ $G$ = number of generations across all activity periods (ie. number of generatio
 $H$ = number of habitat components used by the species 
 
 
-how many diff gens of adults/larvae in a year - just the generations column in butterfly matrix
-
 ``` {r calc-Ga-Gl}
 calculate_Ga_Gl_Ha_Hl <- function(data) {
 
@@ -159,6 +157,44 @@ $G_t$ = number of generations of a species active in the activity periods affect
 Here, 'strat' is a single management strategy - i.e. one row of the management strategy dataframe.
 
 number of each gens foraging habitats affected
+
+``` {r calc-activity}
+calc_activity <- function(data) {
+  
+  # calculate H
+  H_G <- calculate_Ga_Gl_Ha_Hl(data)
+  H <- H_G %>%
+    select(contains("H"))
+  G <- H_G %>%
+    select(contains("G"))
+  
+  # separate lifestages
+  lifestages <- separate_lifestages(data)
+  
+  # create output dataframe
+  activity_periods <- data.frame(adults = rep(NA, nrow(data)),
+                                 larvae = rep(NA, nrow(data))) 
+  
+  # work out number of periods each species lifestage is active
+  for (i in 1:length(lifestages)) {
+    activity <- lifestages[[i]] %>%
+      select(activity_start : activity_end) %>%
+      select(-c(activity_start, activity_end))
+    
+    activity_periods[,i] <- rowSums(activity) / H[,i]
+  }
+  
+  # return activity periods and G (generations), which will be used when function is called in calculation of Gt
+  return(list(activity_periods, G))
+}
+
+```
+
+``` {r test-activity}
+calc_activity(butterfly)
+
+```
+
 ``` {r calc-Gta-Gtl}
 calculate_Gta_Gtl <- function(data, strat) {
   
@@ -173,6 +209,16 @@ calculate_Gta_Gtl <- function(data, strat) {
   # create output dataframe
   output <- data.frame(Gta = rep(NA, nrow(data)),
                        Gtl = rep(NA, nrow(data)))
+  
+  # calculate activity periods and G
+  activity_periods_G <- calc_activity(data)
+  activity_periods <- activity_periods_G[[1]]
+  G <- activity_periods_G[[2]]
+  
+  # calculate number of generations per activity period
+  gens_per_activity <- G / activity_periods
+  names(gens_per_activity) <- c("adults", "larvae")
+  print(gens_per_activity)
   
   # calculate Gt for both adults and larvae
   for (i in 1:length(lifestages)) {
@@ -192,8 +238,13 @@ calculate_Gta_Gtl <- function(data, strat) {
   overlap <- t(apply(activity, 1, function(row) row & activity_effects)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
   
   # sum rows to find Gt and store in output dataframe
-  output[,i] <- rowSums(overlap)
+  #output[,i] <- rowSums(overlap)
   
+  sums <- rowSums(overlap)
+  
+  # Gt = sum of activity periods affected, multiplied by the number of generations in each activity period, rounded up to a whole number
+  output[,i] <- ceiling(sums * gens_per_activity[,i])
+
   }
   
   return(output)
@@ -203,7 +254,7 @@ calculate_Gta_Gtl <- function(data, strat) {
 
 test calc Gt:
 ``` {r test-Gt}
-calculate_Gta_Gtl(butterfly, man_strats[5,])[12,]
+calculate_Gta_Gtl(butterfly, man_strats[5,])
 ```
 
 ### Calculate Pt
@@ -381,6 +432,13 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
           next  # if no plants affected, skip to next iteration (next effect)
         }
         
+        # if both grass and arable fields are affected, then remove them and replace with 'croppedarea' col
+        if (has_name(plant_locs_affected, "grassfields") && has_name(plant_locs_affected, "arablefields")) {
+          plant_locs_affected <- plant_locs_affected %>%
+            select(-c(grassfields, arablefields)) %>%
+            cbind(., sp_plant_locs$croppedarea)
+        }
+        
         if (effect == 2) {  # if damp effects, need to subset to only damp plants
           damp_plants_affected <- plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
 
@@ -402,7 +460,7 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
 ```
 
 ``` {r test-Fa}
-res <- calculate_Aa_Al_Fa_Fl(butterfly, butterfly_plants, plant_locs, man_strats[3, ])
+res <- calculate_Aa_Al_Fa_Fl(butterfly, butterfly_plants, plant_locs, man_strats[2, ])
 res
 
 butler_Fa <- c(73, 27, 73, 59, 29, 41, 73, 59, 29, 73, 56, 15, 59, 73, 73, 70, 56, 29, 29, 73, 73, 41, 15, 55)
