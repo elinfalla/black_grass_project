@@ -62,8 +62,6 @@ butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3)
 
 # forage plant locations
 plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
-#plant_locs <- plant_locs[,-6]  # remove 'cropped area' column as not needed
-#plant_locs <- plant_locs[is.na(plant_locs$riparian) == F,]  # remove NA rows, as this means the species isn't relevant to butterflies (bees only)
 
 # butterfly forage plants
 butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
@@ -154,7 +152,7 @@ calculate_Ga_Gl_Ha_Hl(butterfly)
 ### Calculate $G_t$
 $G_t$ = number of generations of a species active in the activity periods affected
 
-Here, 'strat' is a single management strategy - i.e. one row of the management strategy dataframe.
+Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.
 
 number of each gens foraging habitats affected
 
@@ -218,7 +216,6 @@ calculate_Gta_Gtl <- function(data, strat) {
   # calculate number of generations per activity period
   gens_per_activity <- G / activity_periods
   names(gens_per_activity) <- c("adults", "larvae")
-  print(gens_per_activity)
   
   # calculate Gt for both adults and larvae
   for (i in 1:length(lifestages)) {
@@ -247,7 +244,9 @@ calculate_Gta_Gtl <- function(data, strat) {
 
   # Gt = sum of activity periods affected, multiplied by the number of generations in each activity period, rounded up to a whole number
   # output[,i] <- ceiling(all_periods_affected * gens_per_activity[,i])
-  output[,i] <- ceiling(sums * gens_per_activity[,i])
+  
+  #output[,i] <- ceiling(sums * gens_per_activity[,i])
+  output[,i] <- sums * gens_per_activity[,i]
 
 
   }
@@ -614,8 +613,9 @@ butler_sorted <- butler_data[order(butler_data$butler_species),]
 butler_sorted$my_risk <- round(risk$total_risk, 2)
 butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$my_risk
 butler_sorted$wo_cropped <- round(risk$total_risk, 2)
+butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$my_risk
 butler_sorted
-sum(butler_sorted$same)
 
 w_wo_cropped <- butler_sorted
+#write_csv(butler_sorted, "w_wo_croppedarea_comparison.csv")
 ```
