@@ -310,7 +310,7 @@ calculate_Pta_Ptl <- function(data, strat) {
 $F$ = points of coincidence between species habitat use and the location of its forage plants 
 $A$ = number of points of coincidence between the impact on and species’ use of forage plant families
 
-Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants that are found in the species habitat(s) that all butterflies will forage on.
+Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants found in the foraging habitat of each butterfly species.
 
 Larvae have much more specific plant forage families.
 
