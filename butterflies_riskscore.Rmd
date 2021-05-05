@@ -139,7 +139,8 @@ calculate_Ga_Gl_Ha_Hl <- function(data) {
     
     # calculate G (select generations col of respective df)
     output[,i+2] <- lifestages[[i]] %>%
-      select(generations)
+      select(gens_start : gens_end) %>%
+      rowSums(.)
   }
     
   return(output)
@@ -160,39 +161,39 @@ Here, 'strat' is a single management strategy - i.e. one row of the management s
 number of each gens foraging habitats affected
 
 ``` {r calc-activity}
-calc_activity <- function(data) {
-  
-  # calculate H
-  H_G <- calculate_Ga_Gl_Ha_Hl(data)
-  H <- H_G %>%
-    select(contains("H"))
-  G <- H_G %>%
-    select(contains("G"))
-  
-  # separate lifestages
-  lifestages <- separate_lifestages(data)
-  
-  # create output dataframe
-  activity_periods <- data.frame(adults = rep(NA, nrow(data)),
-                                 larvae = rep(NA, nrow(data))) 
-  
-  # work out number of periods each species lifestage is active
-  for (i in 1:length(lifestages)) {
-    activity <- lifestages[[i]] %>%
-      select(activity_start : activity_end) %>%
-      select(-c(activity_start, activity_end))
-    
-    activity_periods[,i] <- rowSums(activity) / H[,i]
-  }
-  
-  # return activity periods and G (generations), which will be used when function is called in calculation of Gt
-  return(list(activity_periods, G))
-}
+# calc_activity <- function(data) {
+#   
+#   # calculate H
+#   H_G <- calculate_Ga_Gl_Ha_Hl(data)
+#   H <- H_G %>%
+#     select(contains("H"))
+#   G <- H_G %>%
+#     select(contains("G"))
+#   
+#   # separate lifestages
+#   lifestages <- separate_lifestages(data)
+#   
+#   # create output dataframe
+#   activity_periods <- data.frame(adults = rep(NA, nrow(data)),
+#                                  larvae = rep(NA, nrow(data))) 
+#   
+#   # work out number of periods each species lifestage is active
+#   for (i in 1:length(lifestages)) {
+#     activity <- lifestages[[i]] %>%
+#       select(activity_start : activity_end) %>%
+#       select(-c(activity_start, activity_end))
+#     
+#     activity_periods[,i] <- rowSums(activity) / H[,i]
+#   }
+#   
+#   # return activity periods and G (generations), which will be used when function is called in calculation of Gt
+#   return(list(activity_periods, G))
+# }
 
 ```
 
 ``` {r test-activity}
-calc_activity(butterfly)
+# calc_activity(butterfly)
 
 ```
 
@@ -212,13 +213,15 @@ calculate_Gta_Gtl <- function(data, strat) {
                        Gtl = rep(NA, nrow(data)))
   
   # calculate activity periods and G
-  activity_periods_G <- calc_activity(data)
-  activity_periods <- activity_periods_G[[1]]
-  G <- activity_periods_G[[2]]
+  # activity_periods_G <- calc_activity(data)
+  # activity_periods <- activity_periods_G[[1]]
+  # G <- activity_periods_G[[2]]
   
   # calculate number of generations per activity period
-  gens_per_activity <- G / activity_periods
-  names(gens_per_activity) <- c("adults", "larvae")
+  # gens_per_activity <- G / activity_periods
+  # names(gens_per_activity) <- c("adults", "larvae")
+  
+  
   
   # calculate Gt for both adults and larvae
   for (i in 1:length(lifestages)) {
@@ -226,6 +229,22 @@ calculate_Gta_Gtl <- function(data, strat) {
     activity <- lifestages[[i]] %>%
       select(activity_start : activity_end) %>%
       select(-c(activity_start, activity_end))
+  
+    gens_per_period <- lifestages[[i]] %>%
+      select(gens_start : gens_end) %>%
+      select(-c(gens_start, gens_end))
+    
+    early <- gens_per_period %>%
+      select(contains("early")) %>%
+      rowSums(.)
+    mid <- gens_per_period %>%
+      select(contains("mid")) %>%
+      rowSums(.)
+    late <- gens_per_period %>%
+      select(contains("late")) %>%
+      rowSums(.)
+
+    all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), 4))
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
   aligned <- identical(colnames(activity), colnames(activity_effects))
@@ -235,21 +254,34 @@ calculate_Gta_Gtl <- function(data, strat) {
   }
   
   # find overlap
-  overlap <- t(apply(activity, 1, function(row) row & activity_effects)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  names(overlap) <- names(activity_effects)
+  print(overlap)
+  Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))
+  
+  truncated_overlap <- as_tibble(overlap) %>%
+    select(-contains(c("CA","CG"))) %>%
+    cbind(., Cropped)
+  print(truncated_overlap)
+  print(Cropped)
+  all_gens_affected <- truncated_overlap * all_gens_per_period
   
   # sum rows to find Gt and store in output dataframe
   #output[,i] <- rowSums(overlap)
   
-  sums <- rowSums(overlap)
- 
   # periods_affected <- t(apply(overlap, 1, function(row) row[1:3] | row[4:6] | row[7:9] | row[10:12] | row[13:15] ))
-  # all_periods_affected <- rowSums(periods_affected)
+  # gens_affected <- periods_affected * data.frame(early, mid, late)
+  # output[,i] <- rowSums(gens_affected)
+  
+  output[,i] <- rowSums(all_gens_affected)
+ 
+
 
   # Gt = sum of activity periods affected, multiplied by the number of generations in each activity period, rounded up to a whole number
   # output[,i] <- ceiling(all_periods_affected * gens_per_activity[,i])
   
   #output[,i] <- ceiling(sums * gens_per_activity[,i])
-  output[,i] <- sums * gens_per_activity[,i]
+  #output[,i] <- sums * gens_per_activity[,i]
 
 
   }
@@ -439,11 +471,11 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
         }
         
         # if both grass and arable fields are affected, then remove them and replace with 'croppedarea' col
-        # if (has_name(plant_locs_affected, "grassfields") && has_name(plant_locs_affected, "arablefields")) {
-        #   plant_locs_affected <- plant_locs_affected %>%
-        #     select(-c(grassfields, arablefields)) %>%
-        #     cbind(., sp_plant_locs$croppedarea)
-        # }
+        if (has_name(plant_locs_affected, "grassfields") && has_name(plant_locs_affected, "arablefields")) {
+          plant_locs_affected <- plant_locs_affected %>%
+            select(-c(grassfields, arablefields)) %>%
+            cbind(., sp_plant_locs$croppedarea)
+        }
 
         if (effect == 2) {  # if damp effects, need to subset to only damp plants
           damp_plants_affected <- plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
@@ -610,12 +642,18 @@ butler_species <- c(
 )
 butler_data <- data.frame(butler_species, butler_risk)
 butler_sorted <- butler_data[order(butler_data$butler_species),]
+
 butler_sorted$my_risk <- round(risk$total_risk, 2)
 butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$my_risk
-butler_sorted$wo_cropped <- round(risk$total_risk, 2)
 butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$my_risk
+
+butler_sorted$wo_cropped <- round(risk$total_risk, 2)
+butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$wo_cropped
+butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$wo_cropped
+
 butler_sorted$new <- round(risk$total_risk, 2)
 print(round(risk$total_risk, 2))
+
 butler_sorted
 
 w_wo_cropped <- butler_sorted
