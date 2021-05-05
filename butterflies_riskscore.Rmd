@@ -131,9 +131,12 @@ calculate_Ga_Gl_Ha_Hl <- function(data) {
     
     # calculate H
     output[,i] <- lifestages[[i]] %>%
-      select(hab_start : hab_end) %>%
+      select(hab_start : hab_end) %>%  # select habitat columns
+      select(-c(hab_start, hab_end)) %>%  # remove marker cols
+      mutate(Cropped = CA_hab | CG_hab) %>%  # create cropped area col and remove CG and CA
+      select(-c(CA_hab, CG_hab)) %>%
       rowSums(.)
- 
+    
     # calculate G (select generations col of respective df)
     output[,i+2] <- lifestages[[i]] %>%
       select(generations)
@@ -441,7 +444,7 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
         #     select(-c(grassfields, arablefields)) %>%
         #     cbind(., sp_plant_locs$croppedarea)
         # }
-        
+
         if (effect == 2) {  # if damp effects, need to subset to only damp plants
           damp_plants_affected <- plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
 
@@ -481,9 +484,6 @@ which(res$Fl != butler_Fl)
  
 ``` {r calc-Ft}
 calculate_Fta_Ftl <- function(data, plants, plant_locs, strat) {
-  # F <- calculate_Fa_Fl(data, plant_locs)
-  # Fa <- F$Fa
-  # Fl <- F$Fl
 
   A_F <- calculate_Aa_Al_Fa_Fl(data, plants, plant_locs, strat)
   Aa <- A_F$Aa
@@ -614,6 +614,8 @@ butler_sorted$my_risk <- round(risk$total_risk, 2)
 butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$my_risk
 butler_sorted$wo_cropped <- round(risk$total_risk, 2)
 butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$my_risk
+butler_sorted$new <- round(risk$total_risk, 2)
+print(round(risk$total_risk, 2))
 butler_sorted
 
 w_wo_cropped <- butler_sorted
