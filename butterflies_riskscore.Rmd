@@ -22,6 +22,7 @@ The method is from **Butler, S. J. et al.** 'A cross-taxonomic index for quantif
 
 The risk score is calculated as follows:  
 $$ Risk = \frac{P_{ta} + F_{ta}}{R_a} + \frac{P_{tl} + F_{tl}}{R_l}$$
+
 where subscript "l" refers to larvae and subscript "a" refers to adults. The risk score is hence the sum of the risk scores for the adult and larval stage for a particular species, where:  
 $P_t$ = the risk score associated with reduced foraging activity potential 
 $F_t$ = the risk score associated with reduction in forage plant availability
@@ -29,6 +30,7 @@ $R$ = the species’ reliance on farmland habitat
 
 $P_t$ is calculated as follows:  
 $$P_t = \frac{G_t}{G*H}$$
+
 $G_t$ = total number of generations of the species' given life stage (i.e. $G_{ta}$ for adults, $G_{tl}$ for larvae) active in the activity periods affected
 $G$ = number of generations of the life stage across all activity periods (i.e. per year)
 $H$ = number of habitat components used by the species' life stage  
@@ -149,8 +151,9 @@ calculate_Ga_Gl_Ha_Hl <- function(data) {
 
 test G + H func:
 ``` {r test-GH}
-calculate_Ga_Gl_Ha_Hl(butterfly)
-
+res <- calculate_Ga_Gl_Ha_Hl(butterfly)
+res$species <- all_species
+res
 ```
 
 ### Calculate $G_t$
@@ -256,14 +259,13 @@ calculate_Gta_Gtl <- function(data, strat) {
   # find overlap
   overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
   names(overlap) <- names(activity_effects)
-  print(overlap)
+
   Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))
   
   truncated_overlap <- as_tibble(overlap) %>%
     select(-contains(c("CA","CG"))) %>%
     cbind(., Cropped)
-  print(truncated_overlap)
-  print(Cropped)
+
   all_gens_affected <- truncated_overlap * all_gens_per_period
   
   # sum rows to find Gt and store in output dataframe
@@ -292,7 +294,12 @@ calculate_Gta_Gtl <- function(data, strat) {
 
 test calc Gt:
 ``` {r test-Gt}
-calculate_Gta_Gtl(butterfly, man_strats[5,])
+out <- calculate_Gta_Gtl(butterfly, man_strats[3,])
+out$species <- all_species
+out
+out$Gta == calculate_Ga_Gl_Ha_Hl(butterfly)$Ga | out$Gta == 0
+out$Gtl == calculate_Ga_Gl_Ha_Hl(butterfly)$Gl | out$Gtl == 0
+
 ```
 
 ### Calculate Pt
@@ -475,6 +482,17 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
           plant_locs_affected <- plant_locs_affected %>%
             select(-c(grassfields, arablefields)) %>%
             cbind(., sp_plant_locs$croppedarea)
+        } 
+        else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0 & effect == 1){ #  if strat affects all crops (not damp)
+          if (sum(has_name(plant_locs_affected, c("grassfields", "arablefields"))) > 0) { # if sp is on at least 1 crop
+            
+            if (sum(sp_habs) > 1) { # if sp is also on at least 1 other hab
+             
+              plant_locs_affected <- plant_locs_affected %>% # do same as above - used cropped area col
+              select(-contains(c("grassfields", "arablefields"))) %>%
+              cbind(., sp_plant_locs$croppedarea)  ## IS THIS TRUE FOR DAMP PLANTS TOO??
+            }
+          }
         }
 
         if (effect == 2) {  # if damp effects, need to subset to only damp plants
@@ -499,7 +517,23 @@ calculate_Aa_Al_Fa_Fl <- function(data, plants, plant_locs, strat) {
 
 ``` {r test-Fa}
 res <- calculate_Aa_Al_Fa_Fl(butterfly, butterfly_plants, plant_locs, man_strats[2, ])
+res$species <- all_species
 res
+all_species <- c("Brimstone","Brown hairstreak","Comma","Common blue","Essex skipper","Gatekeeper","Green-veined white","Holly blue","Large skipper","Large white","Marbled white",
+"Marsh fritillary",
+"Meadow brown ",
+"Orange tip",
+"Peacock",
+"Ringlet",
+"Small copper",
+"Small heath",
+"Small skipper",
+"Small tortoiseshell",
+"Small white",
+"Speckled wood",
+"Wall",
+"White-letter hairstreak")
+
 
 butler_Fa <- c(73, 27, 73, 59, 29, 41, 73, 59, 29, 73, 56, 15, 59, 73, 73, 70, 56, 29, 29, 73, 73, 41, 15, 55)
 all.equal(res$Fa, butler_Fa)
@@ -550,7 +584,13 @@ calculate_Fta_Ftl <- function(data, plants, plant_locs, strat) {
 ```
 
 ``` {r test-Ft}
-calculate_Fta_Ftl(butterfly, butterfly_plants, plant_locs, man_strats[1,])
+sum <- 0
+for (i in 1:6) {
+  sum <- sum + calculate_Fta_Ftl(butterfly, butterfly_plants, plant_locs, man_strats[i,])
+  sum <- sum + calculate_Pta_Ptl(butterfly, man_strats[i,])
+}
+print(sum)
+sum$species <- all_species
 ```
 
 ## Calculate risk score
@@ -643,19 +683,21 @@ butler_species <- c(
 butler_data <- data.frame(butler_species, butler_risk)
 butler_sorted <- butler_data[order(butler_data$butler_species),]
 
+butler_sorted$same_BEFORE <- butler_sorted$same
 butler_sorted$my_risk <- round(risk$total_risk, 2)
 butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$my_risk
 butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$my_risk
+butler_sorted
+
 
 butler_sorted$wo_cropped <- round(risk$total_risk, 2)
 butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$wo_cropped
 butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$wo_cropped
 
+
 butler_sorted$new <- round(risk$total_risk, 2)
 print(round(risk$total_risk, 2))
 
-butler_sorted
 
-w_wo_cropped <- butler_sorted
-#write_csv(butler_sorted, "w_wo_croppedarea_comparison.csv")
+
 ```
