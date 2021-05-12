@@ -86,28 +86,26 @@ calculate_F_D <- function(data) {
     select(C_hab : R_hab) %>%
     rowSums(.)
   
-  # invertebrates <- data %>%
-  #   select(C_BG : R_vertebrate) %>%
-  #   select(contains(c("AG","BG","AQ"))) %>%
-  #   mutate(num_inverts = rowSums(.) / F,
-  #          inverts_presence = num_inverts | 0) # will be 1 if number of inverts is non-zero
-  # print(invertebrates)
-  #            
-  # non_invertebrates <- data %>% 
-  #   select(C_BG : R_vertebrate) %>%  # select all dietary components cols
-  #   select(-contains(c("AG","BG","AQ"))) %>% # unselect invertebrates
-  #   mutate(num_diets = rowSums(.) / F) # sum for each species
-  # 
-  # D <- non_invertebrates$num_diets + invertebrates$inverts_presence
+  invertebrates <- data %>%
+    select(C_BG : R_vertebrate) %>%
+    select(contains(c("AG","BG","AQ"))) %>%
+    mutate(num_inverts = rowSums(.) / F,
+           inverts_presence = num_inverts | 0) # will be 1 if number of inverts is non-zero
+  print(invertebrates)
+
+  non_invertebrates <- data %>%
+    select(C_BG : R_vertebrate) %>%  # select all dietary components cols
+    select(-contains(c("AG","BG","AQ"))) %>% # unselect invertebrates
+    mutate(num_diets = rowSums(.) / F) # sum for each species
+
+  D <- non_invertebrates$num_diets + invertebrates$inverts_presence
+
   
-  
-  D_temp <- data %>%
-    select(C_BG : R_AQ) %>%
-    mutate(D = ceiling(rowSums(.) / F))
-  
-  #D <- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
-  
-  return(data.frame(F, D = D_temp$D))
+  # D <- data %>%
+  #   select(C_BG : R_AQ) %>%
+  #   transmute(D = ceiling(rowSums(.) / F)) # divide each value by value of F for the species to get D. then round up to account for R_AQ
+
+  return(data.frame(F, D))
 }
 ```
 
@@ -159,21 +157,24 @@ calculate_A_B <- function(data, strat) {
            R = R_BG | R_AG)
 
   hab_names <- c("C", "M", "H", "R")
+  
   for (hab in hab_names) {
+    
     inverts <- overlap %>%
       select(contains(hab) & contains(c("AG", "BG")))
     
     overlap_hab <- overlap[,names(inverts)]
+    overlap_hab_sums <- rowSums(overlap_hab)
     
     for (species in 1:nrow(data)) { # for each species
-      if (sum(overlap_hab[species,]) > 1) { # if more than one invertebrate type (above/below ground) affected
+
+      if (overlap_hab_sums[species] > 1) { # if more than one invertebrate type (above/below ground) affected
+
         BG_col <- names(overlap_hab)[1]
-        
-        overlap[species,BG_col] <- 0
+  
+        overlap[species,BG_col] <- 0 # arbitrarily set one (below-ground) to 0 - same as combining the columns
       }
     }
-
-    print(inverts)
   }
   A <- rowSums(overlap[,1:last_d_col])
   
