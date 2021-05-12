@@ -86,14 +86,33 @@ calculate_F_D <- function(data) {
     select(C_hab : R_hab) %>%
     rowSums(.)
   
-  D_temp <- data %>% 
-    select(C_BG : R_vertebrate) %>%  # select all dietary components cols
-    rowSums(.) # sum for each species
+  # invertebrates <- data %>%
+  #   select(C_BG : R_vertebrate) %>%
+  #   select(contains(c("AG","BG","AQ"))) %>%
+  #   mutate(num_inverts = rowSums(.) / F,
+  #          inverts_presence = num_inverts | 0) # will be 1 if number of inverts is non-zero
+  # print(invertebrates)
+  #            
+  # non_invertebrates <- data %>% 
+  #   select(C_BG : R_vertebrate) %>%  # select all dietary components cols
+  #   select(-contains(c("AG","BG","AQ"))) %>% # unselect invertebrates
+  #   mutate(num_diets = rowSums(.) / F) # sum for each species
+  # 
+  # D <- non_invertebrates$num_diets + invertebrates$inverts_presence
   
-  D <- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
   
-  return(data.frame(F,D))
+  D_temp <- data %>%
+    select(C_BG : R_AQ) %>%
+    mutate(D = ceiling(rowSums(.) / F))
+  
+  #D <- ceiling(D_temp / F)  # divide each value by value of F for the species to get D. then round up to account for R_AQ
+  
+  return(data.frame(F, D = D_temp$D))
 }
+```
+
+``` {r test-D}
+calculate_F_D(mammals)
 ```
 
 ### Calculate $A$ and $B$  
@@ -110,12 +129,12 @@ calculate_A_B <- function(data, strat) {
   # subset diet and habitat columns from data
   diets_habs <- data %>%
     select(C_BG : R_hab)
-  
+
   # subset relevant columns from strategy data
   strat <- strat %>%
     select(C_BG : R_hab) %>%
     select(!c(C_AQ, M_AQ, H_AQ)) # remove AQ columns (except R_AQ) so cols align
-  
+
   # column number of last diet column
   last_d_col <- ncol(diets_habs) - 4  # 4 habitat columns
   
@@ -123,13 +142,39 @@ calculate_A_B <- function(data, strat) {
   aligned <- identical(colnames(diets_habs), colnames(strat))
   
   if (aligned == F) {
-    warning("WARNING: Mammal data and management strategy columns do not align/are not the same - A and B calculations will be incorrect")
+    warning("WARNING: Mammal data and management strategy columns do not align/are not the same - A and B calculations may be incorrect")
   }
   
   # find overlap
-  overlap <- t(apply(diets_habs, 1, function(row) row & strat)) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
-  
+  overlap <- data.frame(t(apply(diets_habs, 1, function(row) row & strat))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  names(overlap) <- names(diets_habs)
+ 
   # CALCULATE A (sum diet cols of overlap)
+  #A <- rowSums(overlap[,1:last_d_col])
+  
+  invertebrate_effects <- overlap %>%
+    transmute(C = C_BG | C_AG,
+           M = M_BG | M_AG,
+           H = H_BG | H_AG,
+           R = R_BG | R_AG)
+
+  hab_names <- c("C", "M", "H", "R")
+  for (hab in hab_names) {
+    inverts <- overlap %>%
+      select(contains(hab) & contains(c("AG", "BG")))
+    
+    overlap_hab <- overlap[,names(inverts)]
+    
+    for (species in 1:nrow(data)) { # for each species
+      if (sum(overlap_hab[species,]) > 1) { # if more than one invertebrate type (above/below ground) affected
+        BG_col <- names(overlap_hab)[1]
+        
+        overlap[species,BG_col] <- 0
+      }
+    }
+
+    print(inverts)
+  }
   A <- rowSums(overlap[,1:last_d_col])
   
   # CALCULATE B (sum habitat cols of overlap)
@@ -139,6 +184,11 @@ calculate_A_B <- function(data, strat) {
 }
 
 ```
+
+``` {r}
+calculate_A_B(mammals, man_strats[4,])
+```
+
 
 
 ### Calculate $D_t$  
@@ -169,6 +219,9 @@ calculate_Dt <- function(data, strat) {
 
 ```
 
+``` {r}
+calculate_Dt(mammals, man_strats[2,])
+```
 
 ## Step 2: Calculate $N_t$
 
@@ -192,6 +245,10 @@ calculate_N <- function(data) {
 
 ```
 
+``` {r test-n}
+data.frame(calculate_N(mammals))
+
+```
 
 ### Calculate $C1$ and $C2$ 
 $C1$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
@@ -319,6 +376,22 @@ riskscores <- calculate_riskscores(mammals, man_strats)
 
 # Display risk scores
 riskscores
+
+
+butler_sp <- c(
+"Yellow-necked mouse","Wood mouse","Water vole","Barbastelle","Roe deer","Red deer","Sika","Bank vole","Fallow deer","Serotine","Hedgehog","Chinese water deer","Brown hare","Otter","Badger","Harvest mouse","Field vole","Muntjac","House mouse","Common doormouse","Stoat","Weasel","Polecat","Bechsteins","Brandts","Daubentons","Whiskered","Natterers","Water shrew","Leisler","Noctule","Rabbit","Nathusius pipistrelle","Pipistrelle","Soprano pipistrelle","Brown long-eared","Grey long-eared bat","Brown rat","Greater horseshoe","Lesser horseshoe","Common shrew","Pygmy shrew","Common mole","Red fox"
+)
+butler_risk <- c(0.78,1.79,1.75,1.75,1.17,0.44,0.33,1.33,0.67,3.50,1.50,1.50,3.33,2.00,1.50,3.63,1.42,0.78,2.04,0.78,1.50,1.38,1.86,1.75,1.75,1.75,1.75,1.75,1.20,1.75,3.50,1.17,1.17,3.50,1.75,1.75,1.75,1.81,2.50,2.50,2.00,2.00,1.75,1.50
+)
+butler <- data.frame(butler_sp, butler_risk)
+butler <- butler[order(butler$butler_sp),]
+butler$my_risk <- round(riskscores$total_risk, 2)
+butler$same <- butler$my_risk == butler$butler_risk
+butler$diff <- butler$my_risk - butler$butler_risk
+riskscores
+butler
+
+butler$old_diff <- round(riskscores$total_risk - butler$butler_risk,2)
 
 ```
 
