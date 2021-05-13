@@ -60,7 +60,7 @@ Load datasets and replace all NAs with 0s.
 man_strats <- read_xlsx("change.xlsx", 5) 
 
 # butterfly requirements matrix data
-butterfly <- read_xlsx("Butterfly matrix.xlsx", skip = 3) 
+butterfly <- read_xlsx("Butterfly_requirements.xlsx", skip = 3) 
 
 # forage plant locations
 plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
