@@ -64,7 +64,7 @@ man_strats <- read_xlsx("change.xlsx", 3)
 man_strats <- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
 # mammal matrix data
-mammals <- read_xlsx("Mammal matrix.xlsx", skip = 2) 
+mammals <- read_xlsx("Mammal_requirements.xlsx", skip = 2) 
 
 
 # replace NAs with 0s in both datasets
@@ -91,7 +91,7 @@ calculate_F_D <- function(data) {
     select(contains(c("AG","BG","AQ"))) %>%
     mutate(num_inverts = rowSums(.) / F,
            inverts_presence = num_inverts | 0) # will be 1 if number of inverts is non-zero
-  print(invertebrates)
+ 
 
   non_invertebrates <- data %>%
     select(C_BG : R_vertebrate) %>%  # select all dietary components cols
