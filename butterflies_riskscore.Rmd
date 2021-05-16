@@ -54,7 +54,7 @@ library(tidyverse) # for data manipulation
 
 
 ### Source functions to calculate $P_t$ and $F_t$
-Includes functions to calculate G, H, Gt, A, anf F, as well as Pt and Ft.  
+Includes functions to calculate G, H, Gt, A, and F, as well as Pt and Ft.  
 ``` {r source-Pt-Ft}
 source("calc_Pt_Ft_functions.R")
 ```

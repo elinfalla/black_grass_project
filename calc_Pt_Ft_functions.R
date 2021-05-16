@@ -1,5 +1,8 @@
 calculate_G_H <- function(data) {
   
+  # print message to user
+  print(" **** Calculating G and H.... ****")
+  
   # create output dataframe
   output <- data.frame(H = rep(NA, nrow(data)),
                        G = rep(NA, nrow(data)))
@@ -17,10 +20,16 @@ calculate_G_H <- function(data) {
     select(gens_start : gens_end) %>%
     rowSums(.)
   
+  # print success message
+  print("**** Calculation complete! ****")
+  
   return(output)
 }
 
 calculate_Gt <- function(data, strat) {
+  
+  # print message to user
+  print("**** Calculating Gt.... ****")
   
   # select relevant cols of strat
   activity_effects <- strat %>%
@@ -45,20 +54,25 @@ calculate_Gt <- function(data, strat) {
     select(contains("late")) %>%
     rowSums(.)
   
-  all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), 4))
+  # isolate habs to work out number of habitats (4 for butterfly, 3 for bee)
+  habs <- data %>%
+    select(hab_start : hab_end, 
+           -c(hab_start, hab_end))
+  
+  all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), ncol(habs)-1))
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
   aligned <- identical(colnames(activity), colnames(activity_effects))
   
   if (aligned == F) {
-    warning(paste0("WARNING: Butterfly data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Lifestage = ", i, ", 1=adult, 2=larvae"))
+    warning(paste0("WARNING: Butterfly/bee data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Lifestage = ", i, ", 1=adult, 2=larvae"))
   }
   
   # find overlap
   overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
   names(overlap) <- names(activity_effects)
   
-  Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))
+  Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))  # 7:9 = CA cols, 10:12 = CG cols
   
   truncated_overlap <- as_tibble(overlap) %>%
     select(-contains(c("CA","CG"))) %>%
@@ -68,11 +82,17 @@ calculate_Gt <- function(data, strat) {
   
   Gt <- rowSums(all_gens_affected)
   
+  # print success message
+  print("**** Calculation complete! ****")
+  
   return(Gt)
   
 }
 
 calculate_Pt <- function(data, strat) {
+  
+  # print message to user
+  print("###### CALCULATING PT... ######")
   
   G_H <- calculate_G_H(data)
   G <- G_H$G
@@ -91,10 +111,16 @@ calculate_Pt <- function(data, strat) {
       Pt  # if no
     )
   
+  # print success message
+  print("###### PT CALCULATION COMPLETE ######")
+  
   return(Pt)
 }
 
 calculate_A_F <- function(data, plants, plant_locs, strat) {
+  
+  # print message to user
+  print("**** Calculating A and F.... ****")
   
   # PUT IN CHECK THAT COLUMNS ALIGN
   
@@ -105,8 +131,8 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
   # pull plant names from plant_locs and plants, to check they are the same
   plant_locs_names <- plant_locs %>% pull(plantfamily)
   plants_names <- colnames(plants %>% 
-                             select(species_start:species_end) %>% 
-                             select(-c(species_start, species_end)))
+                             select(plants_start:plants_end) %>% 
+                             select(-c(plants_start, plants_end)))
   
   # check plant names are the same, print warning if not
   if (identical(plant_locs_names, plants_names) == F) {
@@ -122,13 +148,13 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
                        A = rep(NA, nrow(data)))
   
   # subset appropriate butterfly requirements data to habitat and damp cols
-  habs <-  data %>% 
+  habs <- data %>% 
     select(hab_start:hab_end, damp_start:damp_end)
   
   # select plant species cols from butterfly forage plants data
-  butterfly_plants <- plants %>% 
-    select(species_start : species_end) %>%
-    select(-c(species_start, species_end)) # remove marker cols
+  forage_plants <- plants %>% 
+    select(plants_start : plants_end) %>%
+    select(-c(plants_start, plants_end)) # remove marker cols
   
   # find overlap between species habitat use and effects on habitat
   overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
@@ -153,14 +179,14 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     no_name_plant_locs <- plant_locs[,-1] 
     
     # subset plant locs to only include plants the species forages on
-    sp_plant_locs <- no_name_plant_locs[which(butterfly_plants[species,] == 1),]
+    sp_plant_locs <- no_name_plant_locs[which(forage_plants[species,] == 1),]
     
     # if species has no forage plants, print warning and set A and F to 0
     if (nrow(sp_plant_locs) == 0) { 
       warning(paste("WARNING: Species", species, "has 0 forage plants. Al = 0
                     "))
-      output[species, lifestage] <- 0
-      output[species, lifestage+2] <- 0
+      output[species, "A"] <- 0
+      output[species, "F"] <- 0
       next  # go to next iteration of for loop
     }
     
@@ -216,7 +242,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
             
             plant_locs_affected <- plant_locs_affected %>% # do same as above - used cropped area col
               select(-contains(c("grassfields", "arablefields"))) %>%
-              cbind(., sp_plant_locs$croppedarea)  ## IS THIS TRUE FOR DAMP PLANTS TOO??
+              cbind(., sp_plant_locs$croppedarea)
           }
         }
       }
@@ -237,10 +263,16 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     output[species, "A"] <- total_plants_affected
   }
   
+  # print success message
+  print("**** Calculation complete! ****")
+  
   return(output)
 }
 
 calculate_Ft <- function(data, plants, plant_locs, strat) {
+  
+  # print message to user
+  print("###### CALCULATING FT... ######")
   
   A_F <- calculate_A_F(data, plants, plant_locs, strat)
   A <- A_F$A
@@ -256,6 +288,9 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
       0, # if yes
       Ft  # if no
     )
+  
+  # print success message
+  print("###### FT CALCULATION COMPLETE ######")
   
   return(Ft)
 }
