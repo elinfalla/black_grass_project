@@ -11,7 +11,7 @@ fontsize: 11pt
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Introduction  
+## 1. Introduction  
 This script calculates risk scores associated with changes to farm management, for **butterfly** and/or **bee** species reliant on farmland. **The user decides which scores to calculate by setting the input variable to 'butterflies', 'bees' or 'both'.**
 
 **Note:** the script needs at least 2 species inputted to run.
@@ -27,7 +27,7 @@ The method calculates risk based on the overlaps between the resource requiremen
 
 -----
 
-### Risk score equation - butterflies
+### 1.1. Risk score equation - butterflies
 
 The risk score is calculated as follows:  
 $$ Risk Score = \frac{P_{ta} + F_{ta}}{R_a} + \frac{P_{tl} + F_{tl}}{R_l}$$
@@ -37,7 +37,9 @@ $P_t$ = the risk score associated with reduced foraging activity potential
 $F_t$ = the risk score associated with reduction in forage plant availability  
 $R$ = the species’ reliance on farmland habitat  
 
-### Risk score equation - bees
+&nbsp;  
+
+### 1.2. Risk score equation - bees
 
 The risk score is calculated as follows: 
 
@@ -48,7 +50,9 @@ $F_t$ = the risk score associated with reduction in forage plant availability
 $N_t$ = the risk score associated with reduced nest site availability  
 $R$ = the species’ reliance on farmland habitat  
 
-### Equation components  
+&nbsp;  
+
+### 1.3. Equation components  
 #### **$P_t$** - reduced foraging activity potential
 $P_t$ is calculated as follows:   
 $$P_t = \frac{G_t}{G*H}$$
@@ -75,8 +79,8 @@ $N$ = number of nest sites
 $H_n$ = number of habitats used where nest sites are likely to occur  
 
 
-## Set-up
-### Load packages
+## 2. Set-up
+### 2.1. Load packages
 ```{r load-packages, message=FALSE}
 
 rm(list = ls()) # clear env
@@ -85,7 +89,7 @@ library(tidyverse) # for data manipulation
 
 ```
 
-### **USER INPUT REQUIRED**: Determine required risk score calculation**  
+### 2.2. Determine required risk score calculation (**USER INPUT REQUIRED**)
 Determine which risk scores to calculate (bees, butterflies or both), by setting the **input** variable to one of either:  
 
 * "bees"  
@@ -102,7 +106,7 @@ if (input != "bees" & input != "butterflies" & input != "both") {
 }
 ```
 
-### Read in and process data  
+### 2.3. Read in and process data  
 Load required datasets and replace all NAs with 0s. For both bees and butterflies, there are 4 data structures required to calculate risk scores:
 
 * **Species requirements** - contains binary data on species' habitats, activity periods, generations per year (and nesting habitats in the case of bees)
@@ -113,8 +117,10 @@ Load required datasets and replace all NAs with 0s. For both bees and butterflie
 
 * **Farm management strategies** - contains binary data on how each management change affects the species' requirements
 
+&nbsp;  
+
 #### For butterflies:
-``` {r read-in-data}
+``` {r butt-read-in-data, message=FALSE}
 if (input == "butterflies" | input == "both") {
   
   # farm management strategies
@@ -152,8 +158,10 @@ if (input == "butterflies" | input == "both") {
 }
 ```
 
+&nbsp;  
+
 #### For bees:  
-``` {r read-in-data}
+``` {r bee-read-in-data, message=FALSE}
 if (input == "bees" | input == "both") {
 
   # farm management strategies
@@ -195,9 +203,11 @@ if (input == "bees" | input == "both") {
 }  
 ```
 
+&nbsp;  
+
 For bees, the forage plants need subsetting to ensure the same plant families are found in the **forage plant locations** dataset and the **bee forage plants**. Plant families found in **forage plant locations** but not **bee forage plants** are ones that no bee species forages on, whereas those found in **bee forage plants** but not **forage plant locations** are not relevant to the analysis, due to being plant families that aren't found either in farmland or in the UK.
 
-``` {r data-prep}
+``` {r bee-data-prep}
 if (input == "bees" | input == "both") {
   
   # extract plant families for bee_plant_locs and bee_plants
@@ -236,10 +246,10 @@ if (input == "bees" | input == "both") {
 }
 ```
 
-## Calculate $P_t$ 
-For butterflies, this is $P_{ta}$ for adults, and $P_{tl}$ for larvae. The same is true for all variables calculated.
+## 3. Calculate $P_t$ 
+For butterflies, this is $P_{ta}$ for adults, and $P_{tl}$ for larvae. The same is true for all parameters calculated.
 
-### Calculate $G$ and $H$
+### 3.1. Calculate $G$ and $H$
 $G$ = number of generations across all activity periods (i.e. total number of life cycle components)  
 $H$ = number of habitat components used by the species  
 
@@ -274,7 +284,7 @@ calculate_G_H <- function(data) {
 
 ```
 
-### Calculate $G_t$
+### 3.2. Calculate $G_t$
 $G_t$ = number of generations of a species active in the activity periods affected
 
 Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.
@@ -345,7 +355,7 @@ calculate_Gt <- function(data, strat) {
 
 ```
 
-### Calculate Pt
+### 3.3. Calculate Pt
 Pta = Gta/(Ga*Ha)  
 Ptl = Gtl/(Gl*Hl)  
 
@@ -380,9 +390,9 @@ calculate_Pt <- function(data, strat) {
 
 ```
 
-## Calculate $F_t$
+## 4. Calculate $F_t$
 
-### Calculate $F$ and $A$
+### 4.1. Calculate $F$ and $A$
 $F$ = points of coincidence between species habitat use and the location of its forage plants  
 $A$ = number of points of coincidence between the impact on and species’ use of forage plant families  
 
@@ -546,7 +556,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
 ```
 
 
-### Calculate $F_t$
+### 4.2. Calculate $F_t$
 
 ``` {r calc-Ft}
 calculate_Ft <- function(data, plants, plant_locs, strat) {
@@ -577,7 +587,7 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
 
 ```
 
-## Calculate $N_t$ (for bees only)
+## 5. Calculate $N_t$ (for bees only)
 
 $N_t$ = risk score associated with reduced nesting site availability  
 
@@ -587,8 +597,8 @@ $B$  = number of points of coincidence between the impact on and species' use of
 $N$  = number of nest sites used  
 $H_n$ = number of habitats used where nest sites are likely to occur  
 
-### Calculate $N$ and $H_n$
-``` {r calc-N}
+### 5.1. Calculate $N$ and $H_n$
+``` {r calc-N-Hn}
 calculate_N_Hn <- function(data) {
   
   nest_sites <- c("Versatile", "Aerial", "Bare", "Extensive", "Open")
@@ -617,7 +627,7 @@ calculate_N_Hn <- function(data) {
 }
 ```
 
-### Calculate $B$
+### 5.2. Calculate $B$
 ``` {r calc-b}
 calculate_B <- function(data, strat) {
   
@@ -637,7 +647,7 @@ calculate_B <- function(data, strat) {
 }
 ```
 
-### Calculate $N_t$
+### 5.3. Calculate $N_t$
 $$N_t = \frac{B}{N * H_n}$$ 
 
 ``` {r calc-Nt}
@@ -664,9 +674,11 @@ calculate_Nt <- function(data, strat) {
 }
 ```
 
-## Calculate risk score
+## 6. Calculate risk score
 
-### Butterflies
+### 6.1. Butterflies
+
+&nbsp;  
 
 #### Function to create separate adult and larval datasets
 For butterflies, each risk score variable needs to be calculated twice - once for larvae and once for adults. The below function can split the **butterfly forage plants** and **butterfly requirements** datasets into separate datasets for each life stage (adults + larvae).  
@@ -697,6 +709,8 @@ separate_lifestages <- function(data) {
   return(list(adults, larvae))
 }
 ```
+
+&nbsp;  
 
 #### Function to calculate risk scores
 ``` {r butt-calc-riskscore}
@@ -754,6 +768,8 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
 ```
 
+&nbsp;  
+
 #### Calculate risk scores
 Test scores against Butler's risk scores to ensure method is correct.
 ``` {r butt-test-riskscore}
@@ -806,7 +822,7 @@ if (input == "butterflies" | input == "both") {
 }
 ```
 
-### Bees
+### 6.2. Bees
 
 #### Function to calculate risk scores
 ``` {r bee-calc-riskscore}
@@ -847,6 +863,8 @@ calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
   return(riskscores)
 }
 ```
+
+&nbsp;  
 
 #### Calculate risk scores
 ``` {r bee-run-risk}
