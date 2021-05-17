@@ -1,5 +1,5 @@
 ---
-title: "Farmland Biodiversity Health Index - <br> Mammal Risk Scores"
+title: "Farmland Biodiversity Health Index - <br> Butterfly and Bee Risk Scores"
 author: "Elin Falla"
 output:
   html_document: default
@@ -12,35 +12,68 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Introduction  
-This script calculates risk scores associated with changes to farm management, for **butterfly** species reliant on farmland.  
+This script calculates risk scores associated with changes to farm management, for **butterfly** and/or **bee** species reliant on farmland. **The user decides which scores to calculate by setting the input variable to 'butterflies', 'bees' or 'both'.**
 
 **Note:** the script needs at least 2 species inputted to run.
 
 The method is from **Butler, S. J. et al.** 'A cross-taxonomic index for quantifying the health of farmland biodiversity.' J. Appl. Ecol. 46, 1154-1162 (2009) https://doi.org/10.1111/j.1365-2664.2009.01709.x  
 
+This risk assessment framework assumes that the major mechanisms of impact on UK farmland bees and butterflies will be:  
+1. reduced forage plant abundance ($P$)   
+2. reduced foraging activity due to loss of habitat ($F$)  
+3. reduced nesting success ($N$) - **BEES ONLY**
+
+The method calculates risk based on the overlaps between the resource requirements used by each species and the resource requirements affected by the change.
+
 -----
 
-The risk score is calculated as follows:  
-$$ Risk = \frac{P_{ta} + F_{ta}}{R_a} + \frac{P_{tl} + F_{tl}}{R_l}$$
+### Risk score equation - butterflies
 
-where subscript "l" refers to larvae and subscript "a" refers to adults. The risk score is hence the sum of the risk scores for the adult and larval stage for a particular species, where:  
-$P_t$ = the risk score associated with reduced foraging activity potential 
-$F_t$ = the risk score associated with reduction in forage plant availability
+The risk score is calculated as follows:  
+$$ Risk Score = \frac{P_{ta} + F_{ta}}{R_a} + \frac{P_{tl} + F_{tl}}{R_l}$$
+
+where subscript $l$ refers to larvae and subscript $a$ refers to adults. The risk score is hence the sum of the risk scores for the adult and larval stage for a particular species, where:  
+$P_t$ = the risk score associated with reduced foraging activity potential  
+$F_t$ = the risk score associated with reduction in forage plant availability  
 $R$ = the species’ reliance on farmland habitat  
 
-$P_t$ is calculated as follows:  
+### Risk score equation - bees
+
+The risk score is calculated as follows: 
+
+$$Risk Score = \frac{(P_t + F_t + N_t)} {R}$$  
+where:  
+$P_t$ = the risk score associated with reduced foraging activity potential  
+$F_t$ = the risk score associated with reduction in forage plant availability  
+$N_t$ = the risk score associated with reduced nest site availability  
+$R$ = the species’ reliance on farmland habitat  
+
+### Equation components  
+#### **$P_t$** - reduced foraging activity potential
+$P_t$ is calculated as follows:   
 $$P_t = \frac{G_t}{G*H}$$
 
-$G_t$ = total number of generations of the species' given life stage (i.e. $G_{ta}$ for adults, $G_{tl}$ for larvae) active in the activity periods affected
-$G$ = number of generations of the life stage across all activity periods (i.e. per year)
+$G_t$ = total number of generations of the species' given life stage (i.e. $G_{ta}$ for adults, $G_{tl}$ for larvae) active in the activity periods affected  
+$G$ = number of generations of the life stage across all activity periods (i.e. per year)  
 $H$ = number of habitat components used by the species' life stage  
 
------  
+-----
 
+#### **$F_t$** - reduction in forage plant availability
 $F_t$ is calculated as follows:  
 $$N_t = \frac{A}{F}$$
 $A$ = number of points of coincidence between impact on and species life stage's use of forage plant families  
 $F$ = number of points of coincidence between species life stage's habitat use and the location of its forage plants  
+
+-----
+
+#### **$N_t$** - reduced nest site availability (**for bees only**)
+$N_t$ is calculated as follows:  
+$$N_t = \frac{B}{N * H_n}$$  
+$B$ = number of points of coincidence between impact on and species use of nest sites  
+$N$ = number of nest sites  
+$H_n$ = number of habitats used where nest sites are likely to occur  
+
 
 ## Set-up
 ### Load packages
@@ -52,53 +85,600 @@ library(tidyverse) # for data manipulation
 
 ```
 
+### **USER INPUT REQUIRED**: Determine required risk score calculation**  
+Determine which risk scores to calculate (bees, butterflies or both), by setting the **input** variable to one of either:  
 
-### Source functions to calculate $P_t$ and $F_t$
-Includes functions to calculate G, H, Gt, A, and F, as well as Pt and Ft.  
-``` {r source-Pt-Ft}
-source("calc_Pt_Ft_functions.R")
+* "bees"  
+
+* "butterflies"  
+
+* "both"  
+
+``` {r set-input}
+input <- "bees"
+
+if (input != "bees" & input != "butterflies" & input != "both") {
+  stop("input is not set to an accepted value")
+}
 ```
 
+### Read in and process data  
+Load required datasets and replace all NAs with 0s. For both bees and butterflies, there are 4 data structures required to calculate risk scores:
 
-### Read in required datasets  
-Load datasets and replace all NAs with 0s.  
+* **Species requirements** - contains binary data on species' habitats, activity periods, generations per year (and nesting habitats in the case of bees)
+
+* **Species forage plants** - contains binary data on the plant families each species forages on
+
+* **Forage plant locations** - contains binary data on which habitats each plant family can be found in
+
+* **Farm management strategies** - contains binary data on how each management change affects the species' requirements
+
+#### For butterflies:
 ``` {r read-in-data}
+if (input == "butterflies" | input == "both") {
+  
+  # farm management strategies
+  butt_man_strats <- read_xlsx("change.xlsx", 5)
+  
+  # butterfly requirements matrix data
+  butterfly <- read_xlsx("Butterfly_requirements.xlsx", skip = 3)
+  
+  # forage plant locations
+  butt_plant_locs <- read_xlsx("forage_plant_location.xlsx", na = "NA")
+  
+  # butterfly forage plants
+  butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
+  
+  # replace NAs with 0s in all datasets
+  butt_man_strats <- butt_man_strats %>%
+    mutate_all( ~ replace(., is.na(.), 0))
+  
+  butterfly <- butterfly %>%
+    mutate_all( ~ replace(., is.na(.), 0))
+  
+  butt_plant_locs <- butt_plant_locs %>%
+    mutate_all( ~ replace(., is.na(.), 0))
+  
+  butterfly_plants <- butterfly_plants %>%
+    mutate_all( ~ replace(., is.na(.), 0))
+  
+  # alphabetise plant families in plant_locs and in butterfly_plants (so they align correctly)
+  butterfly_plants <- butterfly_plants %>%
+    select(species:plants_start, 
+         sort(colnames(.[,-ncol(butterfly_plants)])), # sort plant cols alphabetically, not including last (plants_end) col
+         plants_end)
 
-# farm management strategies
-man_strats <- read_xlsx("change.xlsx", 5) 
-
-# butterfly requirements matrix data
-butterfly <- read_xlsx("Butterfly_requirements.xlsx", skip = 3) 
-
-# forage plant locations
-plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
-
-# butterfly forage plants
-butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
-
-# replace NAs with 0s in all datasets
-man_strats <- man_strats %>% 
-  mutate_all(~replace(., is.na(.), 0))
-
-butterfly <- butterfly %>% 
-  mutate_all(~replace(., is.na(.), 0))
-
-plant_locs <- plant_locs %>% 
-  mutate_all(~replace(., is.na(.), 0))
-
-butterfly_plants <- butterfly_plants %>%
-  mutate_all(~replace(., is.na(.), 0))
+  butt_plant_locs <- butt_plant_locs[order(butt_plant_locs$plantfamily),]
+}
 ```
 
-### Write function to create separate adult and larval datasets
-``` {r sep-a-l}
+#### For bees:  
+``` {r read-in-data}
+if (input == "bees" | input == "both") {
+
+  # farm management strategies
+  bee_man_strats <- read_xlsx("change.xlsx", 1, skip=1) 
+  bee_man_strats <- bee_man_strats[1:6,] # select only butler strategies
+  
+  # bee requirements matrix data
+  bee <- read_xlsx("Pollinator_requirements.xlsx") 
+  # bumblebee <- bumblebee %>%
+  #   filter(grepl("Bombus", species)) # select only bumblebee species
+  
+  # bee forage plants
+  bee_plants <- bee %>%
+    select(species, plants_start:plants_end)
+  
+  # forage plant locations
+  bee_plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
+  
+  # replace NAs with 0s in all datasets
+  bee_man_strats <- bee_man_strats %>% 
+    mutate_all(~replace(., is.na(.), 0))
+  
+  bee <- bee %>% 
+    mutate_all(~replace(., is.na(.), 0))
+  
+  bee_plant_locs <- bee_plant_locs %>% 
+    mutate_all(~replace(., is.na(.), 0))
+  
+  bee_plants <- bee_plants %>% 
+    mutate_all(~replace(., is.na(.), 0))
+
+  # alphabetise plant families in plant_locs and in bee_plants (so they align correctly)
+  bee_plants <- bee_plants %>%
+    select(species:plants_start, 
+         sort(colnames(.[,-ncol(bee_plants)])), # sort plant columns alphabetically, not including last (plants_end) col
+         plants_end)
+
+  bee_plant_locs <- bee_plant_locs[order(bee_plant_locs$plantfamily),]
+}  
+```
+
+For bees, the forage plants need subsetting to ensure the same plant families are found in the **forage plant locations** dataset and the **bee forage plants**. Plant families found in **forage plant locations** but not **bee forage plants** are ones that no bee species forages on, whereas those found in **bee forage plants** but not **forage plant locations** are not relevant to the analysis, due to being plant families that aren't found either in farmland or in the UK.
+
+``` {r data-prep}
+if (input == "bees" | input == "both") {
+  
+  # extract plant families for bee_plant_locs and bee_plants
+  plant_fams <- bee_plant_locs %>% pull(plantfamily)
+  bee_plant_fams <- bee_plants %>% 
+    select(plants_start:plants_end, -c(plants_start,plants_end)) %>% 
+    colnames(.) 
+  
+  # find plant families that are in bee_plant_locs but not bee_plants
+  not_bee_plants <- 0
+  for (plant in plant_fams) {
+    if (!(plant %in% bee_plant_fams)) {
+      not_bee_plants <- c(not_bee_plants, plant)
+    }
+  }
+  not_bee_plants <- not_bee_plants[-1]
+  
+  # subset plant family locations to not include plant families bees don't forage on
+  for (i in not_bee_plants) {
+    bee_plant_locs <- bee_plant_locs %>%
+      filter(plantfamily != i)
+  }
+  
+  # find plant families that are in bee_plants but not bee_plant_locs
+  not_farm_plants <- 0
+  for (plant in bee_plant_fams) {
+    if(!(plant %in% plant_fams)) {
+      not_farm_plants <- c(not_farm_plants, plant)
+    }
+  }
+  not_farm_plants <- not_farm_plants[-1]
+  
+  # subset bee forage plants to not include those that aren't relevant (e.g. not on farmland, not present in UK)
+  bee_plants <- bee_plants %>%
+    select(-all_of(not_farm_plants))
+}
+```
+
+## Calculate $P_t$ 
+For butterflies, this is $P_{ta}$ for adults, and $P_{tl}$ for larvae. The same is true for all variables calculated.
+
+### Calculate $G$ and $H$
+$G$ = number of generations across all activity periods (i.e. total number of life cycle components)  
+$H$ = number of habitat components used by the species  
+
+``` {r calc-G-H}
+calculate_G_H <- function(data) {
+  
+  # print message to user
+  print(" **** Calculating G and H.... ****")
+  
+  # create output dataframe
+  output <- data.frame(H = rep(NA, nrow(data)),
+                       G = rep(NA, nrow(data)))
+  
+  # calculate H
+  output[,"H"] <- data %>%
+    select(hab_start : hab_end) %>%  # select habitat columns
+    select(-c(hab_start, hab_end)) %>%  # remove marker cols
+    mutate(Cropped = CA_hab | CG_hab) %>%  # create cropped area col and remove CG and CA
+    select(-c(CA_hab, CG_hab)) %>%
+    rowSums(.)
+  
+  # calculate G (select generations col of respective df)
+  output[,"G"] <- data %>%
+    select(gens_start : gens_end) %>%
+    rowSums(.)
+  
+  # print success message
+  print("**** Calculation complete! ****")
+  
+  return(output)
+}
+
+```
+
+### Calculate $G_t$
+$G_t$ = number of generations of a species active in the activity periods affected
+
+Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.
+
+``` {r calc-Gt}
+calculate_Gt <- function(data, strat) {
+  
+  # print message to user
+  print("**** Calculating Gt.... ****")
+  
+  # select relevant cols of strat
+  activity_effects <- strat %>%
+    select(activity_start : activity_end) %>%
+    select(-c(activity_start, activity_end)) # remove start and end cols
+  
+  activity <- data %>%
+    select(activity_start : activity_end) %>%
+    select(-c(activity_start, activity_end))
+  
+  gens_per_period <- data %>%
+    select(gens_start : gens_end) %>%
+    select(-c(gens_start, gens_end))
+  
+  early <- gens_per_period %>%
+    select(contains("early")) %>%
+    rowSums(.)
+  mid <- gens_per_period %>%
+    select(contains("mid")) %>%
+    rowSums(.)
+  late <- gens_per_period %>%
+    select(contains("late")) %>%
+    rowSums(.)
+  
+  # isolate habs to work out number of habitats (4 for butterfly, 3 for bee)
+  habs <- data %>%
+    select(hab_start : hab_end, 
+           -c(hab_start, hab_end))
+  
+  all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), ncol(habs)-1))
+  
+  # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
+  aligned <- identical(colnames(activity), colnames(activity_effects))
+  
+  if (aligned == F) {
+    warning(paste0("WARNING: Butterfly/bee data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Lifestage = ", i, ", 1=adult, 2=larvae"))
+  }
+  
+  # find overlap
+  overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  names(overlap) <- names(activity_effects)
+  
+  Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))  # 7:9 = CA cols, 10:12 = CG cols
+  
+  truncated_overlap <- as_tibble(overlap) %>%
+    select(-contains(c("CA","CG"))) %>%
+    cbind(., Cropped)
+  
+  all_gens_affected <- truncated_overlap * all_gens_per_period
+  
+  Gt <- rowSums(all_gens_affected)
+  
+  # print success message
+  print("**** Calculation complete! ****")
+  
+  return(Gt)
+  
+}
+
+```
+
+### Calculate Pt
+Pta = Gta/(Ga*Ha)  
+Ptl = Gtl/(Gl*Hl)  
+
+``` {r calc-Pt}
+calculate_Pt <- function(data, strat) {
+  
+  # print message to user
+  print("###### CALCULATING PT... ######")
+  
+  G_H <- calculate_G_H(data)
+  G <- G_H$G
+  H <- G_H$H
+  
+  Gt <- calculate_Gt(data, strat)
+  
+  # CALCULATE Pt
+  Pt = Gt / (G * H)
+  
+  # replace infinite or NA values with 0
+  Pt <- 
+    ifelse(
+      is.nan(Pt) | is.infinite(Pt) == T,  # test
+      0, # if yes
+      Pt  # if no
+    )
+  
+  # print success message
+  print("###### PT CALCULATION COMPLETE ######")
+  
+  return(Pt)
+}
+
+```
+
+## Calculate $F_t$
+
+### Calculate $F$ and $A$
+$F$ = points of coincidence between species habitat use and the location of its forage plants  
+$A$ = number of points of coincidence between the impact on and species’ use of forage plant families  
+
+Butterflies have long tongues and so forage plants don't differ between species. This means adults of all species have the same set of forage plants. Therefore, $F_a$ ($F$ for adults) will just be the total number of forage plants found in the foraging habitat(s) of each butterfly species.  
+
+Butterfly larvae (caterpillars) have much more specific plant forage families, as do the bee species.  
+
+``` {r calc-F-A}
+calculate_A_F <- function(data, plants, plant_locs, strat) {
+  
+  # print message to user
+  print("**** Calculating A and F.... ****")
+  
+  # PUT IN CHECK THAT COLUMNS ALIGN
+  
+  # select hab + damp cols of change data
+  hab_effects <- strat %>%
+    select(hab_start:hab_end, damp_start:damp_end)
+  
+  # pull plant names from plant_locs and plants, to check they are the same
+  plant_locs_names <- plant_locs %>% pull(plantfamily)
+  plants_names <- colnames(plants %>% 
+                             select(plants_start:plants_end) %>% 
+                             select(-c(plants_start, plants_end)))
+  
+  # check plant names are the same, print warning if not
+  if (identical(plant_locs_names, plants_names) == F) {
+    warning("WARNING: columns of butterfly forage plants are not the same as rows of plant locations data, i.e. plant species are not the same. Calculations may be incorrect.")
+    
+    print("Cols of butterfly plant data:")
+    print(paste(plants_names))
+    print(paste("Rows of plant locations data:", plant_locs_names))
+  }
+  
+  # initialise output dataframe
+  output <- data.frame(F = rep(NA, nrow(data)),
+                       A = rep(NA, nrow(data)))
+  
+  # subset appropriate butterfly requirements data to habitat and damp cols
+  habs <- data %>% 
+    select(hab_start:hab_end, damp_start:damp_end)
+  
+  # select plant species cols from butterfly forage plants data
+  forage_plants <- plants %>% 
+    select(plants_start : plants_end) %>%
+    select(-c(plants_start, plants_end)) # remove marker cols
+  
+  # find overlap between species habitat use and effects on habitat
+  overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
+  colnames(overlap) <- colnames(habs)
+  
+  # split effects on species into general and damp effects
+  general_effects <- overlap %>% 
+    select(hab_start : hab_end) %>%
+    select(-c(hab_start, hab_end))  # remove marker cols
+  
+  damp_effects <- overlap %>% 
+    select(damp_start : damp_end) %>%
+    select(-c(damp_start, damp_end))  # remove marker cols
+  
+  # calculate A and F for each species
+  for(species in 1:nrow(habs)) {
+    
+    sp_general_effects <- general_effects[species,]
+    sp_damp_effects <- damp_effects[species,]
+    
+    # remove species name col of plant locs (so columns align with habs)
+    no_name_plant_locs <- plant_locs[,-1] 
+    
+    # subset plant locs to only include plants the species forages on
+    sp_plant_locs <- no_name_plant_locs[which(forage_plants[species,] == 1),]
+    
+    # if species has no forage plants, print warning and set A and F to 0
+    if (nrow(sp_plant_locs) == 0) { 
+      warning(paste("WARNING: Species", species, "has 0 forage plants. Al = 0
+                    "))
+      output[species, "A"] <- 0
+      output[species, "F"] <- 0
+      next  # go to next iteration of for loop
+    }
+    
+    # CALCULATE F
+    
+    # subset habitat to current species
+    sp_habs <- habs %>%
+      select(hab_start : hab_end) %>%
+      select(-c(hab_start, hab_end))
+    sp_habs <- sp_habs[species,]
+    
+    # remove 'cropped area' habitat (col) so the sp_plant_loc cols align with sp_habs (species habitat)
+    no_crops_plant_locs <- sp_plant_locs %>%
+      select(-croppedarea)
+    
+    # subset sp_plant_locs to only habitats occupied by the species
+    all_forage_plants <- no_crops_plant_locs[,which(sp_habs != 0)]
+    
+    # if both grass and arable fields are selected (are part of species habitat), then remove them and replace with 'croppedarea' col
+    if (has_name(all_forage_plants, "grassfields") && has_name(all_forage_plants, "arablefields")) {
+      all_forage_plants <- all_forage_plants %>%
+        select(-c(grassfields, arablefields)) %>%
+        cbind(., sp_plant_locs$croppedarea)
+    }
+    output[species, "F"] <- sum(all_forage_plants)
+    
+    # CALCULATE A
+    
+    # find all plants affected by general and damp hab effects
+    sp_effects <- list(sp_general_effects, sp_damp_effects)
+    plants_affected <- c(NA, NA)
+    
+    for (effect in 1:length(sp_effects)) {
+      
+      plant_locs_affected <- sp_plant_locs[,which(sp_effects[[effect]] != 0)]
+      
+      if (ncol(plant_locs_affected) == 0) {
+        
+        plants_affected[effect] <- 0
+        next  # if no plants affected, skip to next iteration (next effect)
+      }
+      
+      # if both grass and arable fields are affected, then remove them and replace with 'croppedarea' col
+      if (has_name(plant_locs_affected, "grassfields") && has_name(plant_locs_affected, "arablefields")) {
+        plant_locs_affected <- plant_locs_affected %>%
+          select(-c(grassfields, arablefields)) %>%
+          cbind(., sp_plant_locs$croppedarea)
+      } 
+      else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0 & effect == 1){ #  if strat affects all crops (not damp)
+        if (sum(has_name(plant_locs_affected, c("grassfields", "arablefields"))) > 0) { # if sp is on at least 1 crop
+
+          if (sum(sp_habs) > 1) { # if sp is also on at least 1 other hab
+
+            plant_locs_affected <- plant_locs_affected %>% # do same as above - used cropped area col
+              select(-contains(c("grassfields", "arablefields"))) %>%
+              cbind(., sp_plant_locs$croppedarea)
+          }
+        }
+      }
+      
+      if (effect == 2) {  # if damp effects, need to subset to only damp plants
+        damp_plants_affected <- plant_locs_affected[sp_plant_locs$likesdamp == "yes",]
+        
+        plants_affected[effect] <- sum(damp_plants_affected)
+      }
+      else {
+        plants_affected[effect] <- sum(plant_locs_affected)
+      }
+      
+    }
+    # sum plants affected by general and damp effects to get total effects
+    total_plants_affected <- sum(plants_affected)
+    
+    output[species, "A"] <- total_plants_affected
+  }
+  
+  # print success message
+  print("**** Calculation complete! ****")
+  
+  return(output)
+}
+
+```
+
+
+### Calculate $F_t$
+
+``` {r calc-Ft}
+calculate_Ft <- function(data, plants, plant_locs, strat) {
+  
+  # print message to user
+  print("###### CALCULATING FT... ######")
+  
+  A_F <- calculate_A_F(data, plants, plant_locs, strat)
+  A <- A_F$A
+  F <- A_F$F
+  
+  # CALCULATE Ft
+  Ft <- A / F
+  
+  # replace infinite or NA values with 0
+  Ft <- 
+    ifelse(
+      is.nan(Ft) | is.infinite(Ft) == T,  # test
+      0, # if yes
+      Ft  # if no
+    )
+  
+  # print success message
+  print("###### FT CALCULATION COMPLETE ######")
+  
+  return(Ft)
+}
+
+```
+
+## Calculate $N_t$ (for bees only)
+
+$N_t$ = risk score associated with reduced nesting site availability  
+
+$$N_t = \frac{B}{(N * H_n)}$$ 
+where  
+$B$  = number of points of coincidence between the impact on and species' use of nest sites  
+$N$  = number of nest sites used  
+$H_n$ = number of habitats used where nest sites are likely to occur  
+
+### Calculate $N$ and $H_n$
+``` {r calc-N}
+calculate_N_Hn <- function(data) {
+  
+  nest_sites <- c("Versatile", "Aerial", "Bare", "Extensive", "Open")
+  N <- 0
+  
+  for (site in 1:length(nest_sites)) {
+    site_count <- data %>% 
+      select(contains(nest_sites[site])) %>%
+      mutate(count = rowSums(.) | 0)
+    
+    N <- N + site_count$count
+  }
+  
+  nest_habitats <- c("H_N", "M_N", "CG_N", "CA_N")
+  Hn <- 0
+  
+  for (hab in 1:length(nest_habitats)) { 
+    hab_count <- data %>%
+      select(contains(nest_habitats[hab])) %>%
+      mutate(count = rowSums(.) | 0)
+    
+    Hn <- Hn + hab_count$count
+  }
+  
+  return(data.frame(N, Hn))
+}
+```
+
+### Calculate $B$
+``` {r calc-b}
+calculate_B <- function(data, strat) {
+  
+  nesting <- data %>% 
+    select(nest_start : nest_end) %>%
+    select(-c(nest_start, nest_end))
+  
+  nesting_effects <- strat %>%
+    select(nest_start : nest_end) %>%
+    select(-c(nest_start, nest_end))
+  
+  overlap <- as.data.frame(t(apply(nesting, 1, function(row) row & nesting_effects)))
+  
+  B <- rowSums(overlap)
+  
+  return(B)
+}
+```
+
+### Calculate $N_t$
+$$N_t = \frac{B}{N * H_n}$$ 
+
+``` {r calc-Nt}
+calculate_Nt <- function(data, strat) {
+  
+  N_Hn <- calculate_N_Hn(data)
+  N <- N_Hn$N
+  Hn <- N_Hn$Hn
+  
+  B <- calculate_B(data, strat)
+
+  # CALCULATE Nt
+  Nt <- B / (N * Hn)
+
+  # replace infinite or NA values with 0
+  Nt <- 
+    ifelse(
+      is.nan(Nt) | is.infinite(Nt) == T,  # test
+      0, # if yes
+      Nt  # if no
+    )
+  
+  return(Nt)
+}
+```
+
+## Calculate risk score
+
+### Butterflies
+
+#### Function to create separate adult and larval datasets
+For butterflies, each risk score variable needs to be calculated twice - once for larvae and once for adults. The below function can split the **butterfly forage plants** and **butterfly requirements** datasets into separate datasets for each life stage (adults + larvae).  
+
+``` {r butt-sep-a-l}
 separate_lifestages <- function(data) {
   
   ## Function to create separate datasets for adults and larvae
   
-  if ("Lifestage" %in% colnames(data)) {  # this is the case for the butterfly forage plants matrix
-    adults <- data[data$Lifestage == "a",]
-    larvae <- data[data$Lifestage == "l",]
+  if ("lifestage" %in% colnames(data)) {  # this is the case for the butterfly forage plants matrix
+    adults <- data[data$lifestage == "a",]
+    larvae <- data[data$lifestage == "l",]
   }
   else {  # for the butterfly requirements matrix
     adults <- data %>%
@@ -118,42 +698,8 @@ separate_lifestages <- function(data) {
 }
 ```
 
-
-## Calculate $P_t$ (for adults, $P_{ta}$, and larvae, $P_{tl}$)
-
-### Calculate $G$ and $H$
-$G$ = number of generations across all activity periods (ie. number of generations per year)  
-$H$ = number of habitat components used by the species 
-
-### Calculate $G_t$
-$G_t$ = number of generations of a species active in the activity periods affected
-
-Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.
-
-number of each gens foraging habitats affected
-
-### Calculate Pt
-Pta = Gta/(Ga*Ha)
-Ptl = Gtl/(Gl*Hl)
-
-function = calculate_Pt()
-
-## Calculate $F_t$ (for $a$ and $l$)
-
-### Calculate $F$ and $A$
-$F$ = points of coincidence between species habitat use and the location of its forage plants 
-$A$ = number of points of coincidence between the impact on and species’ use of forage plant families
-
-Butterflies have long tongues, so adults can forage on any plant in the habitat(s) they occupy. Therefore, Fa (F for adults) will just be the total number of forage plants found in the foraging habitat(s) of each butterfly species.
-
-Larvae have much more specific plant forage families.
-
-
-### Calculate $F_t$
-function = calculate_Ft()
-
-## Calculate risk score
-``` {r calc-riskscore}
+#### Function to calculate risk scores
+``` {r butt-calc-riskscore}
 calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
   # initialise riskscores dataframe, rows are species, cols are strategies
@@ -208,55 +754,117 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
 ```
 
-### Test risk score
+#### Calculate risk scores
 Test scores against Butler's risk scores to ensure method is correct.
-``` {r test-riskscore}
-risk <- calc_butterfly_riskscore(butterfly, butterfly_plants, plant_locs, man_strats)
-risk
-# 
-# risk$species_latin <- c("Gonepteryx_rhamni", "Thecla_betulae", "Polygonum_c_album", "Polyommatus_icarus", "Thymelicus_lineola", 
-#                         "Pyronia_tithonus", "Pieris_napi", "Celastrina_argiolus", "Ochlodes_sylvanus", "Pieris_brassicae",
-#                         "Melanargia_galathea", "Euphydryas_aurina", "Maniola_jurtina", "Anthocharis_cardamines", "Aglais_io", 
-#                         "Aphantopus_hyperantus", "Lycaena_phlaeas", "Coenonympha_pamphilus", "Thymelicus_sylvestris", "Aglais_urticae",
-#                         "Pieris_rapae", "Pararge_aegeria", "Lasiommata_megera", "Satyrium_w_album")
-# 
-# risk_sorted <- risk[order(risk$species_latin),]
-butler_risk <- c(2.19, 1.65, 3.81, 2.01, 1.42, 1.44, 2.10, 3.53, 1.67, 2.18, 3.03, 1.85, 2.02, 1.85, 2.10, 1.56, 2.34, 1.86, 1.65, 1.06, 2.42, 2.15, 2.10, 2.10)
-butler_species <- c(
-    "small_tortoiseshell",
-    "orange_tip",
-    "ringlet",
-    "green-veined_white",
-    "small_white",
-    "holly_blue",
-    "small_heath",
-    "marsh_fritillary",
-    "brimstone",
-    "peacock",
-    "wall_brown",
-    "small_copper",
-    "meadow_brown",
-    "marbled_white",
-    "large_skipper",
-    "speckled_wood",
-    "large_white",
-    "comma",
-    "common_blue",
-    "gatekeeper",
-    "white-letter_hairstreak",
-    "brown_hairstreak",
-    "essex_skipper",
-    "small_skipper"
-)
-butler_data <- data.frame(butler_species, butler_risk)
-butler_sorted <- butler_data[order(butler_data$butler_species),]
+``` {r butt-test-riskscore}
+if (input == "butterflies" | input == "both") {
+ 
+  butt_risk <- calc_butterfly_riskscore(butterfly, butterfly_plants, butt_plant_locs, butt_man_strats)
+  butt_risk
+  # 
+  # risk$species_latin <- c("Gonepteryx_rhamni", "Thecla_betulae", "Polygonum_c_album", "Polyommatus_icarus", "Thymelicus_lineola", 
+  #                         "Pyronia_tithonus", "Pieris_napi", "Celastrina_argiolus", "Ochlodes_sylvanus", "Pieris_brassicae",
+  #                         "Melanargia_galathea", "Euphydryas_aurina", "Maniola_jurtina", "Anthocharis_cardamines", "Aglais_io", 
+  #                         "Aphantopus_hyperantus", "Lycaena_phlaeas", "Coenonympha_pamphilus", "Thymelicus_sylvestris", "Aglais_urticae",
+  #                         "Pieris_rapae", "Pararge_aegeria", "Lasiommata_megera", "Satyrium_w_album")
+  # 
+  # risk_sorted <- risk[order(risk$species_latin),]
+  butt_butler_risk <- c(2.19, 1.65, 3.81, 2.01, 1.42, 1.44, 2.10, 3.53, 1.67, 2.18, 3.03, 1.85, 2.02, 1.85, 2.10, 1.56, 2.34, 1.86, 1.65, 1.06, 2.42, 2.15, 2.10, 2.10)
+  butt_butler_species <- c(
+      "small_tortoiseshell",
+      "orange_tip",
+      "ringlet",
+      "green-veined_white",
+      "small_white",
+      "holly_blue",
+      "small_heath",
+      "marsh_fritillary",
+      "brimstone",
+      "peacock",
+      "wall_brown",
+      "small_copper",
+      "meadow_brown",
+      "marbled_white",
+      "large_skipper",
+      "speckled_wood",
+      "large_white",
+      "comma",
+      "common_blue",
+      "gatekeeper",
+      "white-letter_hairstreak",
+      "brown_hairstreak",
+      "essex_skipper",
+      "small_skipper"
+  )
+  butt_butler_data <- data.frame(butler_species = butt_butler_species, butler_risk = butt_butler_risk)
+  butt_butler_sorted <- butt_butler_data[order(butt_butler_data$butler_species),]
+  
+  butt_butler_sorted$my_risk <- round(butt_risk$total_risk, 2)
+  butt_butler_sorted$same <- butt_butler_sorted$butler_risk == butt_butler_sorted$my_risk
+  butt_butler_sorted$diff <- butt_butler_sorted$butler_risk - butt_butler_sorted$my_risk
+  butt_butler_sorted
+}
+```
 
-butler_sorted$my_risk <- round(risk$total_risk, 2)
-butler_sorted$same <- butler_sorted$butler_risk == butler_sorted$my_risk
-butler_sorted$diff <- butler_sorted$butler_risk - butler_sorted$my_risk
-butler_sorted
+### Bees
 
+#### Function to calculate risk scores
+``` {r bee-calc-riskscore}
+calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
+  
+  # initialise riskscores dataframe, rows are species, cols are strategies
+  riskscores <- data.frame(matrix(NA, 
+                                  nrow = nrow(data), 
+                                  ncol = nrow(strategies) + 1)) # +1 to add in species names
+  # put species names in first col
+  riskscores[,1] <- data[,1]
+  
+  # name columns of riskscores according to strategies
+  strat_names <- strategies %>% pull(agric_change)
+  colnames(riskscores) <- c("species", strat_names)
+  
+  # extract reliance (R) values for adults and larvae from butterfly data
+  R <- data %>% 
+    select(contains("reliance"))
+  
+  # CALCULATE RISK SCORES per strategy and store in riskscores dataframe
+  for (strat in 1:nrow(strategies)) {
+    
+    # CALCULATE PT, FT AND NT
+    Pt <- calculate_Pt(data, strategies[strat,])
+    Ft <- calculate_Ft(data, plants, plant_locs, strategies[strat,])
+    Nt <- calculate_Nt(data, strategies[strat,])
 
+    # CALCULATE RISK SCORE
+    riskscores[,strat+1] <- (Pt + Ft + Nt) / R
+  }
 
+  # calculate total risk for each species by summing risk across all strategies (if more than one strategy)
+  if (nrow(strategies) > 1) {
+    riskscores$total_risk <- rowSums(riskscores[,-1])
+  }
+  
+  return(riskscores)
+}
+```
 
+#### Calculate risk scores
+``` {r bee-run-risk}
+if (input == "bees" | input == "both") {
+  
+  bee_risk <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
+  
+  bombus <- bee_risk %>%
+    filter(grepl("Bombus", species))
+  bombus
+  
+  bee_butler_risk <- c(2.06,0.80,2.21,0.94,0.75,0.77,2.36,1.25,0.73,2.38,1.29,1.40,4.23,0.78)
+  
+  bee_butler <- data.frame(species = bombus$species,
+                       butler_risk = bee_butler_risk,
+                       my_risk = round(bombus$total_risk, 2))
+  bee_butler$same <- bee_butler$butler_risk == bee_butler$my_risk
+  bee_butler$diff <- bee_butler$butler_risk - bee_butler$my_risk
+  bee_butler
+}
 ```

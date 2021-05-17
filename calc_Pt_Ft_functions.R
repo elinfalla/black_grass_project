@@ -1,3 +1,15 @@
+########################################################################
+### FUNCTIONS FOR CALCULATION OF PT AND FT (for bees and butterflies)
+########################################################################
+
+# Pt = Gt / (G * H)
+# FUNCTIONS USED: calculate_G_H(), calculate_Gt(), calculate_Pt().
+
+# Ft = A / F
+# FUNCTIONS USED: calculate_A_F(), calculate_Ft()
+
+
+## calculate G and H (for Pt)
 calculate_G_H <- function(data) {
   
   # print message to user
@@ -26,6 +38,7 @@ calculate_G_H <- function(data) {
   return(output)
 }
 
+# calculate Gt (for Pt)
 calculate_Gt <- function(data, strat) {
   
   # print message to user
@@ -89,6 +102,7 @@ calculate_Gt <- function(data, strat) {
   
 }
 
+## CALCULATE PT ##  
 calculate_Pt <- function(data, strat) {
   
   # print message to user
@@ -117,6 +131,7 @@ calculate_Pt <- function(data, strat) {
   return(Pt)
 }
 
+# calculate A and F (for Ft)
 calculate_A_F <- function(data, plants, plant_locs, strat) {
   
   # print message to user
@@ -237,9 +252,9 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
       } 
       else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0 & effect == 1){ #  if strat affects all crops (not damp)
         if (sum(has_name(plant_locs_affected, c("grassfields", "arablefields"))) > 0) { # if sp is on at least 1 crop
-          
+
           if (sum(sp_habs) > 1) { # if sp is also on at least 1 other hab
-            
+
             plant_locs_affected <- plant_locs_affected %>% # do same as above - used cropped area col
               select(-contains(c("grassfields", "arablefields"))) %>%
               cbind(., sp_plant_locs$croppedarea)
@@ -269,6 +284,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
   return(output)
 }
 
+## CALCULATE FT ##
 calculate_Ft <- function(data, plants, plant_locs, strat) {
   
   # print message to user

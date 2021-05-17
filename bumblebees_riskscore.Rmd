@@ -250,7 +250,8 @@ calculate_B <- function(data, strat) {
 ```
 
 ``` {r test-B}
-calculate_B(bee, man_strats[3,])
+calculate_B(bee, man_strats[6,])[48]
+calculate_N_Hn(bee)[48,]
 ```
 
 ### Calculate $N_t$
@@ -284,23 +285,10 @@ calculate_Nt <- function(data, strat) {
 calculate_Nt(bee, man_strats[2,])
 ```
 
-``` {r}
-# butt <- c("Aceraceae",	"Amaryllidaceae",	"Aquifoliaceae",	"Araliaceae",	"Balsaminaceae",	"Berberidaceae",	"Betulaceae",	"Boraginaceae",	"Brassicaceae",	"Campanulaceae",	"Cannabaceae",	"Caprifoliaceae",	"Caryophyllaceae",	"Celastraceae",	"Compositae",	"Convolvulaceae",	"Cornaceae",	"Crops",	"Cruciferae",	"Cucurbitaceae",	"Dipsacaceae",	"Euphorbiaceae",	"Fabaceae",	"Fagaceae",	"Gentianaceae",	"Geraniaceae",	"Grossulariaceae",	"Hippocastanaceae",	"Hypericaceae",	"Iridaceae",	"Lamiaceae",	"Liliaceae",	"Linaceae",	"Lythraceae",	"Malvaceae",	"Oleaceae",	"Onagraceae", "Papaveraceae",	"Plantaginaceae",	"Poaceae",	"Polygonaceae",	"Primulaceae",	"Ranunculaceae",	"Resedaceae",	"Rhamnaceae",	"Rosaceae",	"Rubiaceae",	"Salicaceae",	"Scrophulariaceae",	"Solanaceae",	"Tiliaceae",	"Ulmaceae",	"Umbelliferae",	"Urticaceae",	"Valerianaceae",	"Violaceae")
-
-# bum <- c("Aceraceae",	"Amaryllidaceae",	"Aquifoliaceae",	"Araliaceae",	"Balsaminaceae",	"Berberidaceae",	"Betulaceae",	"Boraginaceae",	"Brassicaceae",	"Campanulaceae",	'Caprifoliaceae',	'Caryophyllaceae',	'Celastraceae',	'Cistaceae',	'Compositae',	'Convolvulaceae',	'Cornaceae',	'Crassulaceae',	'Crops',	'Cucurbitaceae',	'Dipsacaceae',	'Ericaceae',	'Euphorbiaceae',	'Fabaceae',	'Fagaceae',	'Gentianaceae',	'Geraniaceae',	'Globulariaceae',	'Grossulariaceae',	'Hippocastanaceae',	'Hypericaceae',	'Iridaceae',	'Lamiaceae',	'Liliaceae',	'Linaceae',	'Lythraceae',	'Malvaceae',	'Oleaceae',	'Onagraceae', "Papaveraceae",	"Plantaginaceae",	"Plumbaginaceae",	"Polemoniaceae",	"Polygonaceae",	"Primulaceae",	"Ranunculaceae",	"Resedaceae",	"Rhamnaceae",	"Rosaceae",	"Rubiaceae",	"Salicaceae",	"Saxifragaceae",	"Scrophulariaceae",	"Solanaceae",	"Tiliaceae",	"Umbelliferae",	"Urticaceae",	"Valerianaceae",	"Violaceae")
-# butt_only <- 0
-# bum_only <- 0
-# for (i in butt) {
-#   if (i %in% bum) next
-#   else {print(i); butt_only <- c(butt_only, i)}
-# }
-# for (i in bum) {
-#   if (i %in% butt) next
-#   else {print(i); bum_only <- c(bum_only, i)}
-# }
-
-
-
+``` {r test-funcs}
+calculate_A_F(bee, bee_plants, plant_locs, man_strats[6,])[48,]
+calculate_G_H(bee)[48,]
+calculate_Gt(bee, man_strats[6,])[48]
 ```
 
 ## Calculate risk score
