@@ -95,7 +95,7 @@ Determine which risk scores to calculate (bees, butterflies or both), by setting
 * "both"  
 
 ``` {r set-input}
-input <- "bees"
+input <- "both"
 
 if (input != "bees" & input != "butterflies" & input != "both") {
   stop("input is not set to an accepted value")
