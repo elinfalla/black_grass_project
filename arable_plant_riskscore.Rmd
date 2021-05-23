@@ -246,11 +246,11 @@ calculate_Nt_Mt <- function(data, strat) {
     select(hab_start : hab_end) %>%
     rowSums(.)
   
-  # calculate E (species nitrogen affinity)
+  # calculate E for each species (species nitrogen affinity)
   E <- nitrogen %>%
     transmute(E = rowSums(.) / num_habs) 
   
-  # calculate M (species moisture affinity)
+  # calculate M for each species (species moisture affinity)
   M <- moisture %>%
     transmute(M = rowSums(.) / num_habs)
   
@@ -264,18 +264,36 @@ calculate_Nt_Mt <- function(data, strat) {
   
   # convert E_effects to vector to use ifelse function
   E_effects <- pull(E_effects, E)
-  
-  # calculate Nt
-  Nt <- 
-    ifelse(
-      E_effects == 0,  # test
-      0,  # if yes
-      (10 - E_effects + 1) / 10  # if no
-    )
-  
-  # calculate Mt
-  Mt <- M_effects / 10
+    M_effects <- pull(M_effects, M)
+      E <- pull(E, E)
+      M <- pull(M, M)
 
+
+  # # calculate Nt
+  # Nt <-
+  #   ifelse(
+  #     E_effects == 0,  # test
+  #     0,  # if yes
+  #     (10 - E_effects + 1) / 10  # if no
+  #   )
+  # 
+  # # calculate Mt
+  # Mt <- M_effects / 10
+
+  Nt <-
+  ifelse(
+    E_effects == 0,  # test
+    0,  # if yes
+    (10 - E + 1) / 10  # if no
+  )
+
+  Mt <-
+  ifelse(
+    M_effects == 0,  # test
+    0,  # if yes
+    M / 10  # if no
+  )
+  
   output <- data.frame(Nt, Mt)
   names(output) <- c("Nt", "Mt")
   
@@ -284,7 +302,8 @@ calculate_Nt_Mt <- function(data, strat) {
 ```
 
 ``` {r test-Nt_mt}
-calculate_Nt_Mt(plants, man_strats[2,])
+calculate_Nt_Mt(plants, man_strats[2,])[36,]
+plants[36,]
 ```
 
 ## Calculate risk scores
@@ -374,6 +393,16 @@ butler$my_risk <- round(risk$total_risk, 2)
 butler$same <- butler$my_risk == butler$total_risk
 butler$diff <- butler$my_risk - butler$total_risk
 butler
-print(paste("correct species =", sum(butler$same), "/", nrow(risk)))
+print(paste("correct species =", sum(butler$same), "/", nrow(risk))) # 26. 28 with Nt/Mt counted once
 
+plants[butler$same == T,]
+
+nrow(plants[plants$C_hab == 1,]) # 102
+nrow(plants[plants$H_Herbi == 0 & plants$M_Herbi == 0 & plants$C_Herbi == 0 ,]) # 85
+nrow(plants[plants$H_Moisture == 2 | plants$M_Moisture == 2 | plants$C_Moisture == 2 ,]) # 173
+
+before <- risk[36,]
+before
+after <- risk[36,]
+after
 ```
