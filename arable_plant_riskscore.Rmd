@@ -106,6 +106,9 @@ plants <- plants %>%
 
 Here rather than separately calculating $H$ and $G$, I calculate $H * G$ (the denominator of the $G_t$ equation) as this is easily calculated from the germination data, as it's written in as germination periods per habitat.  
 
+EXPLAIN G_TIMES_H HERE
+
+
 ``` {r calc-Gt}
 calculate_H_G_A <- function(data, strat) {
   
@@ -162,6 +165,8 @@ calculate_Gt <- function(data, strat) {
 ### 4.1. Calculate $$ F * H $$ and $B$
 
 Here, similar to the calculation of $G_t$, I calculate $$H * F$$ (denominator of $F_t$ equation) directly, rather than calculating $H$ and $F$ separately.  
+
+EXPLAIN F_TIMES_H HERE
 
 ``` {r calc-F-H_B}
 calculate_H_F_B <- function(data, strat) {
@@ -246,63 +251,30 @@ calculate_Nt_Mt <- function(data, strat) {
     select(hab_start : hab_end) %>%
     rowSums(.)
   
-  # calculate E for each species (species nitrogen affinity)
-  E <- nitrogen %>%
-    transmute(E = rowSums(.) / num_habs) 
+  # calculate E and Nt for each species (nitrogen affinity)
+  calc_Nt <- nitrogen %>%
+    transmute(E = rowSums(.) / num_habs,
+              Nt = (10 - E + 1) / 10) 
   
-  # calculate M for each species (species moisture affinity)
-  M <- moisture %>%
-    transmute(M = rowSums(.) / num_habs)
+  # calculate M and Mt for each species (moisture affinity)
+  calc_Mt <- moisture %>%
+    transmute(M = rowSums(.) / num_habs,
+              Mt = M / 10)
   
   # calculate overlaps between requirements and management strat for moisture and nitrogen
   nitro_overlap <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
   moist_overlap <- t(apply(moisture, 1, function(row) row & moisture_effects))
   
-  # calculate E and M taking management strat into account
-  E_effects <- rowSums(nitro_overlap) * E
-  M_effects <- rowSums(moist_overlap) * M
+  # multiply Nt/Mt by overlaps to take man strat into account
+  Nt <- rowSums(nitro_overlap) * calc_Nt$Nt
+  Mt <- rowSums(moist_overlap) * calc_Mt$Mt
   
-  # convert E_effects to vector to use ifelse function
-  E_effects <- pull(E_effects, E)
-    M_effects <- pull(M_effects, M)
-      E <- pull(E, E)
-      M <- pull(M, M)
-
-
-  # # calculate Nt
-  # Nt <-
-  #   ifelse(
-  #     E_effects == 0,  # test
-  #     0,  # if yes
-  #     (10 - E_effects + 1) / 10  # if no
-  #   )
-  # 
-  # # calculate Mt
-  # Mt <- M_effects / 10
-
-  Nt <-
-  ifelse(
-    E_effects == 0,  # test
-    0,  # if yes
-    (10 - E + 1) / 10  # if no
-  )
-
-  Mt <-
-  ifelse(
-    M_effects == 0,  # test
-    0,  # if yes
-    M / 10  # if no
-  )
-  
-  output <- data.frame(Nt, Mt)
-  names(output) <- c("Nt", "Mt")
-  
-  return(output)
+  return(data.frame(Nt, Mt))
 }
 ```
 
 ``` {r test-Nt_mt}
-calculate_Nt_Mt(plants, man_strats[2,])[36,]
+calculate_Nt_Mt(plants, man_strats[2,])
 plants[36,]
 ```
 
