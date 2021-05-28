@@ -160,6 +160,17 @@ calculate_Gt <- function(data, strat) {
 }
 ```
 
+``` {r test-gt}
+all_species <- plants$Species
+dat <- data.frame(species = all_species,
+           Gt = calculate_Gt(plants, man_strats[1,]))
+nrow(dat[dat$Gt != 0,])
+dat
+butler <- read_xlsx("butler_plants_risk.xlsx")
+
+butler$Gt_1 == dat[dat$Gt != 0, "Gt"]
+```
+
 ## 4. Calculate $F_t$
 
 ### 4.1. Calculate $$ F * H $$ and $B$
@@ -220,7 +231,14 @@ calculate_Ft <- function(data, strat) {
 ```
 
 ``` {r }
-calculate_Ft(plants, man_strats[1,])
+plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
+
+dat <- data.frame(species = all_species,
+                  Ft = calculate_Ft(plants, man_strats[2,]))
+#dat$Ft <- add_condition(plants, dat$Ft, "_Au")  # add the condition that the species germinates in autumn to Ft
+
+dat[dat$Ft != 0, "Ft"] == plant_validation[plant_validation$`Reduced crop flowering` != "Geranium pusillum", "Score...3"]
+dat[dat$Ft != 0,]
 ```
 
 
@@ -233,6 +251,9 @@ calculate_Nt_Mt <- function(data, strat) {
     select(nitro_start : nitro_end,
            -c(nitro_start, nitro_end))
   
+  E <- data %>% # ellenberg nitrogen affinity score
+    pull(Nitrogen)
+
   nitrogen_effects <- strat %>%
     select(nitro_start : nitro_end,
            -c(nitro_start, nitro_end))
@@ -242,40 +263,64 @@ calculate_Nt_Mt <- function(data, strat) {
     select(moist_start : moist_end,
            -c(moist_start, moist_end))
   
+  M <- data %>% # ellenberg moisture affinity score
+    pull(Moisture)
+
   moisture_effects <- strat %>%
     select(moist_start : moist_end,
            -c(moist_start, moist_end))
   
   # extract number of habitats each species occupies (to work out E and M)
-  num_habs <- data %>%
-    select(hab_start : hab_end) %>%
-    rowSums(.)
+  # num_habs <- data %>%
+  #   select(hab_start : hab_end) %>%
+  #   rowSums(.)
   
   # calculate E and Nt for each species (nitrogen affinity)
-  calc_Nt <- nitrogen %>%
-    transmute(E = rowSums(.) / num_habs,
-              Nt = (10 - E + 1) / 10) 
+  # calc_Nt <- nitrogen %>%
+  #   transmute(E = rowSums(.) / num_habs,
+  #             Nt = (10 - E + 1) / 10) 
+
+  Nt <- (10 - E + 1) / 10
   
   # calculate M and Mt for each species (moisture affinity)
-  calc_Mt <- moisture %>%
-    transmute(M = rowSums(.) / num_habs,
-              Mt = M / 10)
+  # calc_Mt <- moisture %>%
+  #   transmute(M = rowSums(.) / num_habs,
+  #             Mt = M / 10)
+
+  Mt <- M / 10
   
   # calculate overlaps between requirements and management strat for moisture and nitrogen
   nitro_overlap <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
   moist_overlap <- t(apply(moisture, 1, function(row) row & moisture_effects))
   
   # multiply Nt/Mt by overlaps to take man strat into account
-  Nt <- rowSums(nitro_overlap) * calc_Nt$Nt
-  Mt <- rowSums(moist_overlap) * calc_Mt$Mt
+  Nt <- rowSums(nitro_overlap) * Nt
+  Mt <- rowSums(moist_overlap) * Mt
   
   return(data.frame(Nt, Mt))
 }
 ```
 
 ``` {r test-Nt_mt}
+plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
+
+dat <- data.frame(species = all_species,
+                  Nt = calculate_Nt_Mt(plants, man_strats[2,])$Nt)
+dat[dat$Nt != 0,]
+
 calculate_Nt_Mt(plants, man_strats[2,])
-plants[36,]
+
+# for (row in 1:nrow(plants)) {
+#   if (is.na(plants[row, "Species2"]) == T) {
+#     break
+#   }
+#   
+#   index <- which(plants$Species == as.character(plants[row, "Species2"]))
+#   plants[index, "Nitrogen"] <- as.numeric(plants[row, "Ellenberg"])
+# }
+# 
+# write_xlsx(plants, "plants_nitrogen.xlsx")
+
 ```
 
 ## Calculate risk scores
