@@ -271,31 +271,25 @@ calculate_Nt_Mt <- function(data, strat) {
            -c(moist_start, moist_end))
   
   # extract number of habitats each species occupies (to work out E and M)
-  # num_habs <- data %>%
-  #   select(hab_start : hab_end) %>%
-  #   rowSums(.)
+  num_habs <- data %>%
+    select(hab_start : hab_end) %>%
+    rowSums(.)
   
-  # calculate E and Nt for each species (nitrogen affinity)
-  # calc_Nt <- nitrogen %>%
-  #   transmute(E = rowSums(.) / num_habs,
-  #             Nt = (10 - E + 1) / 10) 
-
+  # calculate Nt for each species (nitrogen affinity)
   Nt <- (10 - E + 1) / 10
+  #Nt_per_hab <- Nt / num_habs
   
-  # calculate M and Mt for each species (moisture affinity)
-  # calc_Mt <- moisture %>%
-  #   transmute(M = rowSums(.) / num_habs,
-  #             Mt = M / 10)
-
+  # calculate Mt for each species (moisture affinity), and divide by number of habitats to get per habitat score
   Mt <- M / 10
+  Mt_per_hab <- Mt / num_habs
   
   # calculate overlaps between requirements and management strat for moisture and nitrogen
   nitro_overlap <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
   moist_overlap <- t(apply(moisture, 1, function(row) row & moisture_effects))
   
-  # multiply Nt/Mt by overlaps to take man strat into account
+  # multiply Nt and Mt_per_hab by overlaps to take man strat into account
   Nt <- rowSums(nitro_overlap) * Nt
-  Mt <- rowSums(moist_overlap) * Mt
+  Mt <- rowSums(moist_overlap) * Mt_per_hab
   
   return(data.frame(Nt, Mt))
 }
@@ -309,6 +303,8 @@ dat <- data.frame(species = all_species,
 dat[dat$Nt != 0,]
 
 calculate_Nt_Mt(plants, man_strats[2,])
+
+
 
 # for (row in 1:nrow(plants)) {
 #   if (is.na(plants[row, "Species2"]) == T) {
@@ -412,7 +408,7 @@ butler$diff <- butler$my_risk - butler$total_risk
 butler
 print(paste("correct species =", sum(butler$same), "/", nrow(risk))) # 26. 28 with Nt/Mt counted once
 
-plants[butler$same == T,]
+plants[butler$same == F,]
 
 nrow(plants[plants$C_hab == 1,]) # 102
 nrow(plants[plants$H_Herbi == 0 & plants$M_Herbi == 0 & plants$C_Herbi == 0 ,]) # 85
