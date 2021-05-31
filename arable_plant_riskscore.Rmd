@@ -163,9 +163,9 @@ calculate_Gt <- function(data, strat) {
 ``` {r test-gt}
 all_species <- plants$Species
 dat <- data.frame(species = all_species,
-           Gt = calculate_Gt(plants, man_strats[1,]))
+           Gt = calculate_Gt(plants, man_strats[4,]))
 nrow(dat[dat$Gt != 0,])
-dat
+dat[80,]
 butler <- read_xlsx("butler_plants_risk.xlsx")
 
 butler$Gt_1 == dat[dat$Gt != 0, "Gt"]
@@ -231,14 +231,15 @@ calculate_Ft <- function(data, strat) {
 ```
 
 ``` {r }
-plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
+plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 7)
 
 dat <- data.frame(species = all_species,
-                  Ft = calculate_Ft(plants, man_strats[2,]))
+                  Ft = calculate_Ft(plants, man_strats[4,]))
 #dat$Ft <- add_condition(plants, dat$Ft, "_Au")  # add the condition that the species germinates in autumn to Ft
 
-dat[dat$Ft != 0, "Ft"] == plant_validation[plant_validation$`Reduced crop flowering` != "Geranium pusillum", "Score...3"]
+dat[dat$Ft != 0, "Ft"] == plant_validation[, "Score"]
 dat[dat$Ft != 0,]
+dat[80,]
 ```
 
 
@@ -299,9 +300,9 @@ calculate_Nt_Mt <- function(data, strat) {
 plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
 
 dat <- data.frame(species = all_species,
-                  Nt = calculate_Nt_Mt(plants, man_strats[2,])$Nt)
+                  Nt = calculate_Nt_Mt(plants, man_strats[4,]))
 dat[dat$Nt != 0,]
-
+dat[80,]
 calculate_Nt_Mt(plants, man_strats[2,])
 
 
@@ -316,6 +317,9 @@ calculate_Nt_Mt(plants, man_strats[2,])
 # }
 # 
 # write_xlsx(plants, "plants_nitrogen.xlsx")
+
+```
+``` {r test-sums}
 
 ```
 
@@ -378,7 +382,7 @@ calc_plant_risk <- function(data, strategies) {
     Nt <- Nt_Mt$Nt
     Mt <- Nt_Mt$Mt
     
-    riskscores[,strat+1] <- (Gt + Ft + Nt + Mt) / R
+    riskscores[,strat+1] <- (Gt + Ft + Nt + Mt) #/ R
     
   }
   
@@ -393,6 +397,9 @@ calc_plant_risk <- function(data, strategies) {
 
 ``` {r test-risk}
 risk <- calc_plant_risk(plants, man_strats)
+risk[which(butler$same == F),]
+butler[which(butler$same == F),]
+
 butler <- read_xlsx("butler_plants_risk.xlsx")
 
 for (sp in butler$species) {
@@ -408,7 +415,7 @@ butler$diff <- butler$my_risk - butler$total_risk
 butler
 print(paste("correct species =", sum(butler$same), "/", nrow(risk))) # 26. 28 with Nt/Mt counted once
 
-plants[butler$same == F,]
+which(butler$same == F)
 
 nrow(plants[plants$C_hab == 1,]) # 102
 nrow(plants[plants$H_Herbi == 0 & plants$M_Herbi == 0 & plants$C_Herbi == 0 ,]) # 85
