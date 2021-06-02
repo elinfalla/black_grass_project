@@ -79,38 +79,28 @@ mammals[is.na(mammals)] <- 0
 ### Calculate $F$ and $D$  
 $D$ = total number of dietary components used by the species  
 $F$ = total number of foraging habitat components used by the species  
+
+EXPLAIN D TIMES F - D is not technically number dietary components as aqueous invertebrates only exist in riparian habitat, so eg. for polecat, by this definition D = 4, but actually D = 3.25, meaning total habitat-diet combo (D times F) = 13, which is the sum of all dietary components across habitats rather than number of dietary components (4) times num habitats (4) = 16 - as this assumes the aqueous inverts are found in all habitats.  
+
 ``` {r calc-D}
 calculate_F_D <- function(data) {
   
   F <- data %>%
     select(C_hab : R_hab) %>%
     rowSums(.)
-  
-  # invertebrates <- data %>%
-  #   select(C_BG : R_vertebrate) %>%
-  #   select(contains(c("AG","BG","AQ"))) %>%
-  #   mutate(num_inverts = rowSums(.) / F,
-  #          inverts_presence = num_inverts | 0) # will be 1 if number of inverts is non-zero
-  # 
-  # 
-  # non_invertebrates <- data %>%
-  #   select(C_BG : R_vertebrate) %>%  # select all dietary components cols
-  #   select(-contains(c("AG","BG","AQ"))) %>% # unselect invertebrates
-  #   mutate(num_diets = rowSums(.) / F) # sum for each species
-  # 
-  # D <- non_invertebrates$num_diets + invertebrates$inverts_presence
 
-  
-  D <- data %>%
+  D_times_F <- data %>%
     select(C_BG : R_AQ) %>%
-    transmute(D = ceiling(rowSums(.) / F)) # divide each value by value of F for the species to get D. then round up to account for R_AQ
+    rowSums(.)
 
-  return(data.frame(F, D))
+  return(data.frame(D_times_F, F))
 }
 ```
 
 ``` {r test-D}
-calculate_F_D(mammals)
+all_species <- mammals$Species
+data.frame(species = all_species,
+           calculate_F_D(mammals))
 ```
 
 ### Calculate $A$ and $B$  
@@ -150,34 +140,6 @@ calculate_A_B <- function(data, strat) {
   # CALCULATE A (sum diet cols of overlap)
   A <- rowSums(overlap[,1:last_d_col])
   
-  # invertebrate_effects <- overlap %>%
-  #   transmute(C = C_BG | C_AG,
-  #          M = M_BG | M_AG,
-  #          H = H_BG | H_AG,
-  #          R = R_BG | R_AG)
-  # 
-  # hab_names <- c("C", "M", "H", "R")
-  # 
-  # for (hab in hab_names) {
-  #   
-  #   inverts <- overlap %>%
-  #     select(contains(hab) & contains(c("AG", "BG")))
-  #   
-  #   overlap_hab <- overlap[,names(inverts)]
-  #   overlap_hab_sums <- rowSums(overlap_hab)
-  #   
-  #   for (species in 1:nrow(data)) { # for each species
-  # 
-  #     if (overlap_hab_sums[species] > 1) { # if more than one invertebrate type (above/below ground) affected
-  # 
-  #       BG_col <- names(overlap_hab)[1]
-  # 
-  #       overlap[species,BG_col] <- 0 # arbitrarily set one (below-ground) to 0 - same as combining the columns
-  #     }
-  #   }
-  # }
-  # A <- rowSums(overlap[,1:last_d_col])
-  
   # CALCULATE B (sum habitat cols of overlap)
   B <- rowSums(overlap[,(last_d_col+1):ncol(diets_habs)])
   
@@ -202,11 +164,11 @@ calculate_Dt <- function(data, strat) {
   A <- A_B$A
   B <- A_B$B
   
-  F_D <- calculate_F_D(data)
-  F <- F_D$F
-  D <- F_D$D
+   F_D <- calculate_F_D(data)
+   F <- F_D$F
+   D_times_F <- F_D$D_times_F
 
-  Dt <- A/(D * F) + B/F
+  Dt <- A/(D_times_F) + B/F
   
   # replace infinite or NA values with 0
   Dt <- 
@@ -223,7 +185,7 @@ calculate_Dt <- function(data, strat) {
 ``` {r}
 all_species <- mammals$Species
 out <- data.frame(species = all_species,
-                  Dt = calculate_Dt(mammals, man_strats[1,]))
+                  Dt = calculate_Dt(mammals, man_strats[2,]))
 out
 ```
 
@@ -236,21 +198,20 @@ This uses '|', which is the 'or' operator - returns 1 if at least 1 column (abov
 
 ``` {r calc-N}
 calculate_N <- function(data) {
-  N_temp <- data %>%
+
+  N <- data %>%
     select(C_N_AG : R_N_BG) %>%
-    mutate(Crop = C_N_AG | C_N_BG,
-           Margin = M_N_AG | M_N_BG,
-           Hedge = H_N_AG | H_N_BG,
-           Riparian = R_N_AG | R_N_BG,
-           N = Crop + Margin + Hedge + Riparian)  # calculate N by summing up number of nesting habs
-  
-  return(N_temp$N)
+    rowSums(.)
+
+  return(N)
 }
 
 ```
 
 ``` {r test-n}
-data.frame(calculate_N(mammals))
+all_species <- mammals$Species
+data.frame(species = all_species,
+           N = calculate_N(mammals))
 
 ```
 
@@ -342,7 +303,9 @@ out
 
 ## Step 3: Calculate risk score
 This function can take multiple strategies and outputs risk scores for each species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
+
 $$ Risk = \frac{D_t + N_t}{R}$$
+
 ``` {r calc-riskscore}
 calculate_riskscores <- function(data, strategies) {
   
@@ -366,7 +329,7 @@ calculate_riskscores <- function(data, strategies) {
     Dt <- calculate_Dt(data, strategies[strat,])
     Nt <- calculate_Nt(data, strategies[strat,])
     
-    riskscores[,strat+1] <- (Dt + Nt) #/ R
+    riskscores[,strat+1] <- (Dt + Nt) / R
   }
   
   # calculate total risk for each species by summing risk across all strategies (if more than one strategy)
@@ -380,6 +343,7 @@ calculate_riskscores <- function(data, strategies) {
 
 ### Test risk scores are correct
 Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.  
+
 ``` {r test-risk}
 # Calculate risk scores
 riskscores <- calculate_riskscores(mammals, man_strats)
