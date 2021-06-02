@@ -102,7 +102,7 @@ Determine which risk scores to calculate (bees, butterflies or both), by setting
 input <- "bees"
 
 if (input != "bees" & input != "butterflies" & input != "both") {
-  stop("input is not set to an accepted value")
+  stop("input is not set to an accepted value: choose 'bees', 'butterflies' or 'both'")
 }
 ```
 
@@ -391,15 +391,17 @@ calculate_Pt <- function(data, strat) {
 ```
 
 ``` {r test-pt}
-all_species <- bee$species
-dat <- data.frame(species = all_species,
-                  Pt = calculate_Pt(bee, bee_man_strats[1,]))
-dat
+if (input == "bees") {
+  all_species <- bee$species
+  dat <- data.frame(species = all_species,
+                    Pt = calculate_Pt(bee, bee_man_strats[1,]))
+  dat
+  
+  bombus <- dat %>%
+      filter(grepl("Bombus", species))
+  bombus
+}
 
-bombus <- dat %>%
-    filter(grepl("Bombus", species))
-
-bombus
 ```
 
 ## 4. Calculate $F_t$
@@ -582,7 +584,10 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
 ```
 
 ``` {r test-f-a}
-after <- calculate_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[1,])
+if (input == "bees") {
+  after <- calculate_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[1,])
+
+}
 
 
 ```
@@ -899,10 +904,13 @@ calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
 &nbsp;  
 
 ``` {r test-sums}
-out <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
-bombus_out <- out %>%
+if (input == "bees") {
+  out <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
+  bombus_out <- out %>%
     filter(grepl("Bombus", species))
-bombus_out
+  bombus_out
+}
+
 ```
 
 #### Calculate risk scores
