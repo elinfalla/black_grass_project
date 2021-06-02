@@ -392,7 +392,6 @@ butler$diff <- butler$my_risk - butler$butler_risk
 riskscores
 butler
 
-butler$old_diff <- round(riskscores$total_risk - butler$butler_risk,2)
-
+print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butler)))
 ```
 
