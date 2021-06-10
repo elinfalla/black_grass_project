@@ -394,7 +394,7 @@ calculate_Pt <- function(data, strat) {
 if (input == "bees") {
   all_species <- bee$species
   dat <- data.frame(species = all_species,
-                    Pt = calculate_Pt(bee, bee_man_strats[1,]))
+                    Pt = calculate_Pt(bee, bee_man_strats[4,]))
   dat
   
   bombus <- dat %>%
@@ -546,7 +546,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
           select(-c(grassfields, arablefields)) %>%
           cbind(., no_crop_sp_plant_locs$croppedarea)
       } 
-      else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0 & effect == 1){ #  if strat affects all crops (not damp)
+      else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0){ #  if strat affects all crops (not damp???)
         if (sum(has_name(plant_locs_affected, c("grassfields", "arablefields"))) > 0) { # if sp is on at least 1 crop
 
           if (sum(sp_habs) > 1) { # if sp is also on at least 1 other hab
@@ -585,7 +585,10 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
 
 ``` {r test-f-a}
 if (input == "bees") {
-  after <- calculate_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[1,])
+
+  dat <- data.frame(species = all_species,  
+                    calculate_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
+  dat
 
 }
 
@@ -622,6 +625,15 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
   return(Ft)
 }
 
+```
+
+``` {r tet-ft}
+out <- data.frame(species = all_species,
+                  Ft = calculate_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
+
+bombus <- out %>%
+  filter(grepl("Bombus", species))
+bombus
 ```
 
 ## 5. Calculate $N_t$ (for bees only)
