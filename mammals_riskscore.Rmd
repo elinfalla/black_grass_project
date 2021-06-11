@@ -86,11 +86,13 @@ EXPLAIN D TIMES F - D is not technically number dietary components as aqueous in
 calculate_F_D <- function(data) {
   
   F <- data %>%
-    select(C_hab : R_hab) %>%
+    select(hab_start : hab_end,
+           -c(hab_start, hab_end)) %>%
     rowSums(.)
 
   D_times_F <- data %>%
-    select(C_BG : R_AQ) %>%
+    select(diet_start : diet_end,
+           -c(diet_start, diet_end)) %>%
     rowSums(.)
 
   return(data.frame(D_times_F, F))
@@ -116,15 +118,21 @@ calculate_A_B <- function(data, strat) {
   
   # subset diet and habitat columns from data
   diets_habs <- data %>%
-    select(C_BG : R_hab)
+    select(diet_start : hab_end)
+  
+  num_hab_cols <- ncol(diets_habs %>% 
+                     select(hab_start : hab_end))
 
   # subset relevant columns from strategy data
   strat <- strat %>%
-    select(C_BG : R_hab) %>%
+    select(diet_start : hab_end) %>%
     select(!c(C_AQ, M_AQ, H_AQ)) # remove AQ columns (except R_AQ) so cols align
 
-  # column number of last diet column
-  last_d_col <- ncol(diets_habs) - 4  # 4 habitat columns
+  # get column number of last diet column
+  num_hab_cols <- ncol(diets_habs %>% 
+                         select(hab_start : hab_end))
+  
+  last_d_col <- ncol(diets_habs) - num_hab_cols
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
   aligned <- identical(colnames(diets_habs), colnames(strat))
@@ -200,7 +208,7 @@ This uses '|', which is the 'or' operator - returns 1 if at least 1 column (abov
 calculate_N <- function(data) {
 
   N <- data %>%
-    select(C_N_AG : R_N_BG) %>%
+    select(nest_start : nest_end) %>%
     rowSums(.)
 
   return(N)
@@ -226,10 +234,12 @@ Like for calculating $A$ and $B$ above, overlaps are calculated using the '&' op
 calculate_C1_C2 <- function(data, strat) {
   
   nesting <- data %>%
-    select(C_N_AG : R_N_BG)  # select nesting columns of mammal data
+    select(nest_start : nest_end,
+           -c(nest_start, nest_end))  # select nesting columns of mammal data
  
   nest_effects <- strat %>%
-    select(C_N_AG : R_N_BG_S)  # select nesting columns of strategy data
+    select(nest_start : nest_end,
+           -c(nest_start, nest_end))  # select nesting columns of strategy data
   
   # CALCULATE C1 - effects of reduced nesting success
   nest_success <- nest_effects %>%
@@ -362,7 +372,7 @@ butler <- butler[order(butler$butler_sp),]
 butler$my_risk <- round(riskscores$total_risk, 2)
 butler$same <- butler$my_risk == butler$butler_risk
 butler$diff <- butler$my_risk - butler$butler_risk
-riskscores
+
 butler
 
 print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butler)))
