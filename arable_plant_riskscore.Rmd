@@ -116,6 +116,20 @@ plants <- plants %>%
 
 ```
 
+### 2.3. Create function to check column alignment
+It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+``` {r check-alignment}
+check_aligned <- function(data1, data2) {
+    
+  aligned <- identical(colnames(data1), colnames(data2))
+  
+  if (aligned == F) {
+    warning("Columns of management change and species requirements datasets are not aligned - calculations may not be correct.")
+  }
+}
+```
+
 ## 3. Calculate $G_t$
 
 $$G_t = \frac{A}{G*H}$$
@@ -131,30 +145,32 @@ The calculation of $A$ uses a straightforward overlap between the management cha
 ``` {r calc-Gt}
 calculate_H_G_A <- function(data, strat) {
   
+  # extract germination cols of species requirements and management strats
   germination <- data %>%
+    select(germ_start : germ_end,
+           -c(germ_start, germ_end))
+  
+    germination_effects <- strat %>%
     select(germ_start : germ_end,
            -c(germ_start, germ_end))
   
   # calculate H * G (denominator of Gt equation)
   H_times_G <- germination %>%
     rowSums(.)
+
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(germination, germination_effects)
   
-  # calculate A
-  germination_effects <- strat %>%
-    select(germ_start : germ_end,
-           -c(germ_start, germ_end))
-  
+  # calculate overlap between germination requirements and effects
   overlap <- t(apply(germination, 1, function(row) row & germination_effects))  
   
+  # calculate A
   A <- rowSums(overlap)
   
   return(data.frame(H_times_G, A))
 }
 ```
 
-``` {r test-H-G-A}
-calculate_H_G_A(plants, man_strats[1,])
-```
 
 ### 3.2. Calculate $G_t$  
 
@@ -162,6 +178,7 @@ This function calls ```calculate_H_G_A()``` then uses the output to calculate $G
 
 ``` {r calc-A}
 calculate_Gt <- function(data, strat) {
+  
   H_G_A <- calculate_H_G_A(data, strat)
   A <- H_G_A$A
   H_times_G <- H_G_A$H_times_G
@@ -181,16 +198,6 @@ calculate_Gt <- function(data, strat) {
 }
 ```
 
-``` {r test-gt}
-all_species <- plants$Species
-dat <- data.frame(species = all_species,
-           Gt = calculate_Gt(plants, man_strats[4,]))
-nrow(dat[dat$Gt != 0,])
-dat[80,]
-butler <- read_xlsx("butler_plants_risk.xlsx")
-
-butler$Gt_1 == dat[dat$Gt != 0, "Gt"]
-```
 
 ## 4. Calculate $F_t$
 
@@ -207,21 +214,26 @@ $B$ is also calculated in the same way as $A$ is in the calculation of $G_t$, bu
 ``` {r calc-F-H_B}
 calculate_H_F_B <- function(data, strat) {
   
+  # extract flowering data from species requirements and management strat
   flowering <- data %>%
     select(flower_start : flower_end,
            -c(flower_start, flower_end))
+  
+  flowering_effects <- strat %>%
+  select(flower_start : flower_end,
+         -c(flower_start, flower_end))
   
   # calculate F * H (denominator of Ft equation)
   F_times_H <- flowering %>%
     rowSums(.)
   
-  # calculate B
-  flowering_effects <- strat %>%
-    select(flower_start : flower_end,
-           -c(flower_start, flower_end))
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(flowering, flowering_effects)
   
+  # calculate overlap between flowering requirements and change effects
   overlap <- t(apply(flowering, 1, function(row) row & flowering_effects))  
   
+  # calculate B
   B <- rowSums(overlap)
   
   return(data.frame(F_times_H, B))
@@ -239,6 +251,7 @@ This function calculates $F_t$ for each species by calling ```calculate_H_F_B()`
 
 ``` {r calc-Ft}
 calculate_Ft <- function(data, strat) {
+  
   H_F_B <- calculate_H_F_B(data, strat)
   B <- H_F_B$B
   F_times_H <- H_F_B$F_times_H
@@ -256,18 +269,6 @@ calculate_Ft <- function(data, strat) {
 
   return(Ft)
 }
-```
-
-``` {r }
-plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 7)
-
-dat <- data.frame(species = all_species,
-                  Ft = calculate_Ft(plants, man_strats[4,]))
-#dat$Ft <- add_condition(plants, dat$Ft, "_Au")  # add the condition that the species germinates in autumn to Ft
-
-dat[dat$Ft != 0, "Ft"] == plant_validation[, "Score"]
-dat[dat$Ft != 0,]
-dat[80,]
 ```
 
 
@@ -320,6 +321,10 @@ calculate_Nt_Mt <- function(data, strat) {
     select(hab_start : hab_end) %>%
     rowSums(.)
 
+  # check column alignment for nitrogen and moisture data
+  check_aligned(nitrogen, nitrogen_effects)
+  check_aligned(moisture, moisture_effects)
+  
   # calculate C and D: overlaps between requirements and management strat for moisture and nitrogen
   C_temp <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
   D_temp <- t(apply(moisture, 1, function(row) row & moisture_effects))
@@ -358,24 +363,24 @@ calculate_Nt_Mt(plants, man_strats[2,])
 # write_xlsx(plants, "plants_nitrogen.xlsx")
 
 ```
-``` {r test-sums}
 
-```
 
 ## Calculate risk scores
 
 ### Make function for autumn sowing condition (one of Butler's management changes)
-The 'autumn sowing' management change causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
+The 'autumn sowing' management change used by Butler causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
 
 I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, implemented in the ```calc_plant_risk()``` function below, I'm adding a condition that the species must be autumn germinating to $F_t$ (the effects on flowering).  
 
 ``` {r aut-sow}
 add_condition <- function(data, parameter, condition) {
   
+  # condition will be non-zero if species uses resources in any of conditioned cols
   condition <- data %>%
     select(contains(condition)) %>%
     rowSums(.)
   
+  # if condition is non-zero, leave parameter, else set parameter to 0.
   conditioned_param <- 
     ifelse(
       condition != 0,
@@ -422,6 +427,7 @@ calc_plant_risk <- function(data, strategies) {
     Nt <- Nt_Mt$Nt
     Mt <- Nt_Mt$Mt
     
+    # CALCULATE RISK SCORE
     riskscores[,strat+1] <- (Gt + Ft + Nt + Mt) / R
     
   }

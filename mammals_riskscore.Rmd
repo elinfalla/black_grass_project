@@ -11,7 +11,7 @@ fontsize: 11pt
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Introduction  
+## 1. Introduction  
 This script calculates risk scores associated with changes to farm management, for **mammal** species reliant on farmland.  
 
 **Note:** the script needs at least 2 species inputted to run.
@@ -44,8 +44,8 @@ $N$ = number of nesting habitat components used by the species
 $C1$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
 $C2$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat  
 
-## Set-up
-### Load packages
+## 2. Set-up
+### 2.1. Load packages
 ```{r load-packages, message=FALSE}
 
 rm(list = ls()) # clear env
@@ -55,7 +55,7 @@ library(tidyverse) # for data manipulation
 ```
 
 
-### Read in required datasets  
+### 2.2 Read in required datasets  
 Load datasets and replace all NAs with 0s.  
 ``` {r read-in-data}
 
@@ -74,22 +74,41 @@ man_strats <- man_strats %>%
 mammals[is.na(mammals)] <- 0
 ```
 
-## Step 1: Calculate $D_t$ 
+## 2.3. Create function to check column alignment
+It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
 
-### Calculate $F$ and $D$  
+``` {r check-alignment}
+check_aligned <- function(data1_cols, data2_cols) {
+    
+  aligned <- identical(data1_cols, data2_cols)
+  
+  if (aligned == F) {
+    warning("Columns of management change and species requirements datasets are not aligned - calculations may not be correct.")
+  }
+}
+```
+
+
+## 3. Calculate $D_t$ 
+
+### 3.1. Calculate $F$ and $D$  
 $D$ = total number of dietary components used by the species  
 $F$ = total number of foraging habitat components used by the species  
 
-EXPLAIN D TIMES F - D is not technically number dietary components as aqueous invertebrates only exist in riparian habitat, so eg. for polecat, by this definition D = 4, but actually D = 3.25, meaning total habitat-diet combo (D times F) = 13, which is the sum of all dietary components across habitats rather than number of dietary components (4) times num habitats (4) = 16 - as this assumes the aqueous inverts are found in all habitats.  
+$D$ is not technically the number dietary components as aqueous invertebrates only exist in the riparian habitat. For example, for the polecat, by the official definition $D = 4$, but due to its feeding on aqueous invertebrates in the riparian habitat only, $D = 3.25$, giving 13 when multiplied by $F$ (which is 4 in this case). For this reason, and due to the fact that the dietary components are recorded per habitat, $D * F$ (the denominator of part of $D_t$) is calculated rather than $D$ alone. This is done by summing the dietary components of the data by row (species).  
+
+$F$ is calculated by summing the foraging habitat components of the data by row (species), to give the total number of habitats used per species.  
 
 ``` {r calc-D}
 calculate_F_D <- function(data) {
   
+  # calculate F
   F <- data %>%
     select(hab_start : hab_end,
            -c(hab_start, hab_end)) %>%
     rowSums(.)
 
+  # calculate D * F
   D_times_F <- data %>%
     select(diet_start : diet_end,
            -c(diet_start, diet_end)) %>%
@@ -105,13 +124,13 @@ data.frame(species = all_species,
            calculate_F_D(mammals))
 ```
 
-### Calculate $A$ and $B$  
+### 3.2. Calculate $A$ and $B$  
 $A$ = number of points of coincidence between the impact on and species’ use of dietary components  
 $B$ = number of points of coincidence between the impact on and species’ use of foraging habitat components  
 
-In this function 'strat' is a single row from the management strategies database - i.e. one strategy  
+In this function 'strat' is a single row from the management strategies database - i.e. one management strategy/change.  
 
-Overlap is found by applying the '&' operation, which returns true only if both elements are non-zero - i.e. apply the management strategy row-wise to the mammals data, and the sum of the rows equals the total overlap. This strategy (which is also used to calculate $C1$ and $C2$ later on) assumes that the columns in the two datasets are aligned. There is therefore a check that this is the case, with a warning returned if not.  
+The impact of the change on dietary and foraging habitat components ($A$ and $B$ respectively) is found by applying the '&' operation, which returns true only if both elements are non-zero. The management strategy is applied in this way row-wise to the mammals requirements data, and the row sums gives the total overlap, i.e. $A$ or $B$. This strategy (which is also used to calculate $C1$ and $C2$ later on) assumes that the columns in the two datasets are aligned. There is therefore a check that this is the case, with a warning returned if not.  
 
 ``` {r calc-A}
 calculate_A_B <- function(data, strat) {
@@ -120,31 +139,24 @@ calculate_A_B <- function(data, strat) {
   diets_habs <- data %>%
     select(diet_start : hab_end)
   
-  num_hab_cols <- ncol(diets_habs %>% 
+  hab_cols <- ncol(diets_habs %>% 
                      select(hab_start : hab_end))
 
   # subset relevant columns from strategy data
-  strat <- strat %>%
-    select(diet_start : hab_end) %>%
-    select(!c(C_AQ, M_AQ, H_AQ)) # remove AQ columns (except R_AQ) so cols align
+  diets_habs_effects <- strat %>%
+    select(diet_start : hab_end)
 
   # get column number of last diet column
-  num_hab_cols <- ncol(diets_habs %>% 
-                         select(hab_start : hab_end))
-  
+  hab_cols <- ncol(diets_habs %>% select(hab_start : hab_end))
   last_d_col <- ncol(diets_habs) - num_hab_cols
   
-  # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
-  aligned <- identical(colnames(diets_habs), colnames(strat))
+  # check requirements data and management change data align
+  check_aligned(colnames(diets_habs), colnames(strat))
   
-  if (aligned == F) {
-    warning("WARNING: Mammal data and management strategy columns do not align/are not the same - A and B calculations may be incorrect")
-  }
-  
-  # find overlap
-  overlap <- data.frame(t(apply(diets_habs, 1, function(row) row & strat))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  # find overlap between diet + hab requirements and management change
+  overlap <- data.frame(t(apply(diets_habs, 1, function(row) row & strat))) 
   names(overlap) <- names(diets_habs)
- 
+  
   # CALCULATE A (sum diet cols of overlap)
   A <- rowSums(overlap[,1:last_d_col])
   
@@ -162,9 +174,11 @@ calculate_A_B(mammals, man_strats[1,])
 
 
 
-### Calculate $D_t$  
+### 3.3. Calculate $D_t$  
 
 $$D_t = \frac{A}{D*F} + \frac{B}{F}$$
+This function calculates $D_t$ by calling the relevant previously-defined functions.  
+
 ``` {r calc-Dt}
 calculate_Dt <- function(data, strat) {
   
@@ -197,13 +211,12 @@ out <- data.frame(species = all_species,
 out
 ```
 
-## Step 2: Calculate $N_t$
+## 4. Calculate $N_t$
 
-### Calculate $N$ 
+### 4.1. Calculate $N$ 
 $N$ = number of nesting habitat components used by the species 
 
-This uses '|', which is the 'or' operator - returns 1 if at least 1 column (above or below ground) is 1 for each nesting habitat.  
-
+$N$ is calculated by summing the nesting requirement columns for each row (species).  
 ``` {r calc-N}
 calculate_N <- function(data) {
 
@@ -223,9 +236,8 @@ data.frame(species = all_species,
 
 ```
 
-### Calculate $C1$ and $C2$ 
+### 4.2. Calculate $C1$ and $C2$ 
 $C1$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through reduced success in existing habitat  
-
 $C2$ = number of points of coincidence between potential impact on and the species’ use of nesting habitat components if impact is through loss of habitat  
 
 Like for calculating $A$ and $B$ above, overlaps are calculated using the '&' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.  
@@ -247,11 +259,7 @@ calculate_C1_C2 <- function(data, strat) {
       
   # Check columns of nest_success and nesting are the same (if not aligned, overlap calculation will not be correct)
   to_compare <- gsub(pattern = "_S", replacement = "", colnames(nest_success))  # remove "_S" from nesting_success colnames to compare
-  aligned <- identical(to_compare, colnames(nesting))
-  
-  if (aligned == F) {
-    warning("WARNING: Mammal data and management strategy columns do not align/are not the same - C1 calculations will be incorrect")
-  }
+  check_aligned(to_compare, colnames(nesting)) # compare colnames
   
   # Calculate overlap
   C1_overlap <- t(apply(nesting, 1, function(row) row & nest_success))  
@@ -263,11 +271,7 @@ calculate_C1_C2 <- function(data, strat) {
     select(!contains("_S"))  # select habitat loss columns
    
   # Check columns of nest_habs and nesting are the same (if not aligned, overlap calculation will not be correct)
-  aligned <- identical(colnames(nest_habs), colnames(nesting))
-  
-  if (aligned == F) {
-    warning("WARNING: Mammal data and management strategy columns do not align/are not the same - C2 calculations will be incorrect")
-  }
+  check_aligned(colnames(nest_habs), colnames(nesting))
   
   # Calculate overlap
   C2_overlap <- t(apply(nesting, 1, function(row) row & nest_habs))  
@@ -278,7 +282,7 @@ calculate_C1_C2 <- function(data, strat) {
 
 ```
 
-### Calculate $N_t$
+### 4.3. Calculate $N_t$
 $$N_t = \frac{C1}{N} + \frac{C2}{N}$$
 
 ``` {r calc-Nt}
@@ -311,7 +315,7 @@ out <- data.frame(species = all_species,
 out
 ```
 
-## Step 3: Calculate risk score
+## 5. Calculate risk score
 This function can take multiple strategies and outputs risk scores for each species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
 
 $$ Risk = \frac{D_t + N_t}{R}$$
@@ -339,6 +343,7 @@ calculate_riskscores <- function(data, strategies) {
     Dt <- calculate_Dt(data, strategies[strat,])
     Nt <- calculate_Nt(data, strategies[strat,])
     
+    # CALCULATE RISK SCORE
     riskscores[,strat+1] <- (Dt + Nt) / R
   }
   
@@ -351,7 +356,7 @@ calculate_riskscores <- function(data, strategies) {
 }
 ```
 
-### Test risk scores are correct
+### 5.1. Test risk scores are correct
 Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.  
 
 ``` {r test-risk}
@@ -376,5 +381,7 @@ butler$diff <- butler$my_risk - butler$butler_risk
 butler
 
 print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butler)))
+
+butler$my_risk == butler$butler_risk *-1
 ```
 
