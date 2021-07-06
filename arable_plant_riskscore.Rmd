@@ -79,7 +79,7 @@ Note that this equation is different to Butler's original, but uses the same met
 
 ## 2. Set-up
 ### 2.1. Load packages
-```{r load-packages, message=FALSE}
+```{r load-packages, message=FALSE, purl=FALSE}
 
 rm(list = ls()) # clear env
 library(readxl) # for reading in Excel sheets
@@ -340,7 +340,7 @@ calculate_Nt_Mt <- function(data, strat) {
 }
 ```
 
-``` {r test-Nt_mt}
+``` {r test-Nt_mtm, purl=FALSE}
 plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
 
 dat <- data.frame(species = all_species,
@@ -370,7 +370,7 @@ calculate_Nt_Mt(plants, man_strats[2,])
 ### Make function for autumn sowing condition (one of Butler's management changes)
 The 'autumn sowing' management change used by Butler causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
 
-I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, implemented in the ```calc_plant_risk()``` function below, I'm adding a condition that the species must be autumn germinating to $F_t$ (the effects on flowering).  
+I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, implemented in the ```calc_plant_riskscore()``` function below, I'm adding a condition that the species must be autumn germinating to $F_t$ (the effects on flowering).  
 
 ``` {r aut-sow}
 add_condition <- function(data, parameter, condition) {
@@ -397,7 +397,7 @@ add_condition <- function(data, parameter, condition) {
 The below function calls all the functions defined above in order to calculate a final risk score. Note that, for the functions defined up to this point, parameters are calculated for a single management change. The function below can handle multiple management changes, and will output a risk score for each, as well as a total risk score, calculated by summing up the risk scores of all the changes.  
 
 ``` {r calc-risk}
-calc_plant_risk <- function(data, strategies) {
+calc_plant_riskscore <- function(data, strategies) {
   
   # initialise risk scores dataframe, rows are species, cols are strategies
   riskscores <- data.frame(matrix(NA, 
@@ -441,8 +441,8 @@ calc_plant_risk <- function(data, strategies) {
 }
 ```
 
-``` {r test-risk}
-risk <- calc_plant_risk(plants, man_strats)
+``` {r test-risk, purl=FALSE}
+risk <- calc_plant_riskscore(plants, man_strats)
 #risk[which(butler$same == F),]
 #butler[which(butler$same == F),]
 

@@ -7,7 +7,7 @@ output:
   word_document: default
 fontsize: 11pt
 ---
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, purl=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -125,7 +125,7 @@ calculate_F_D <- function(data) {
 }
 ```
 
-``` {r test-D}
+``` {r test-D, purl=FALSE}
 all_species <- mammals$Species
 data.frame(species = all_species,
            calculate_F_D(mammals))
@@ -172,7 +172,7 @@ calculate_A_B <- function(data, strat) {
 
 ```
 
-``` {r}
+``` {r, purl=FALSE}
 calculate_A_B(mammals, man_strats[1,])
 ```
 
@@ -208,7 +208,7 @@ calculate_Dt <- function(data, strat) {
 
 ```
 
-``` {r}
+``` {r, purl=FALSE}
 all_species <- mammals$Species
 out <- data.frame(species = all_species,
                   Dt = calculate_Dt(mammals, man_strats[2,]))
@@ -233,7 +233,7 @@ calculate_N <- function(data) {
 
 ```
 
-``` {r test-n}
+``` {r test-n, purl=FALSE}
 all_species <- mammals$Species
 data.frame(species = all_species,
            N = calculate_N(mammals))
@@ -313,7 +313,7 @@ calculate_Nt <- function(data, strat) {
 
 ```
 
-``` {r test-nt}
+``` {r test-nt, purl=FALSE}
 out <- data.frame(species = all_species,
                   Nt = calculate_Nt(mammals, man_strats[1,]))
 out
@@ -325,7 +325,7 @@ This function can take multiple strategies and outputs risk scores for each spec
 $$ Risk = \frac{D_t + N_t}{R}$$
 
 ``` {r calc-riskscore}
-calculate_riskscores <- function(data, strategies) {
+calc_mammal_riskscore <- function(data, strategies) {
   
   # initialise riskscores dataframe, rows are species, cols are strategies
   riskscores <- data.frame(matrix(NA, 
@@ -363,9 +363,9 @@ calculate_riskscores <- function(data, strategies) {
 ### 5.1. Test risk scores are correct
 Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.  
 
-``` {r test-risk}
+``` {r test-risk, purl=FALSE}
 # Calculate risk scores
-riskscores <- calculate_riskscores(mammals, man_strats)
+riskscores <- calc_mammal_riskscore(mammals, man_strats)
 
 # Display risk scores
 riskscores

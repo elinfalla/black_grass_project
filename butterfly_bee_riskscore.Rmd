@@ -82,7 +82,7 @@ $H_n$ = number of habitats used where nest sites are likely to occur
 
 ## 2. Set-up
 ### 2.1. Load packages
-```{r load-packages, message=FALSE}
+```{r load-packages, message=FALSE, purl=FALSE}
 
 rm(list = ls()) # clear env
 library(readxl) # for reading in Excel sheets
@@ -99,7 +99,7 @@ Determine which risk scores to calculate (bees, butterflies or both), by setting
 
 * "both"  
 
-``` {r set-input}
+``` {r set-input, purl=FALSE}
 input <- "both"
 
 if (input != "bees" & input != "butterflies" & input != "both") {
@@ -375,9 +375,6 @@ calculate_Gt <- function(data, strat) {
   return(Gt)
   
 }
-
-calculate_Gt(bee, bee_man_strats[1,])
-
 ```
 
 ### 3.3. Calculate Pt
@@ -408,7 +405,7 @@ calculate_Pt <- function(data, strat) {
 
 ```
 
-``` {r test-pt}
+``` {r test-pt, purl=FALSE}
 if (input == "bees") {
   all_species <- bee$species
   dat <- data.frame(species = all_species,
@@ -611,7 +608,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
 
 ```
 
-``` {r test-f-a}
+``` {r test-f-a, purl=FALSE}
 if (input == "bees") {
 
   dat <- data.frame(species = all_species,  
@@ -650,7 +647,7 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
 
 ```
 
-``` {r tet-ft}
+``` {r tet-ft, purl=FALSE}
 if (input == "bees") {
   out <- data.frame(species = all_species,
                   Ft = calculate_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
@@ -846,7 +843,7 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
 
 #### Calculate risk scores
 Test scores against Butler's risk scores to ensure method is correct.
-``` {r butt-test-riskscore}
+``` {r butt-test-riskscore, purl=FALSE}
 if (input == "butterflies" | input == "both") {
  
   butt_risk <- calc_butterfly_riskscore(butterfly, butterfly_plants, butt_plant_locs, butt_man_strats)
@@ -943,7 +940,7 @@ calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
 
 &nbsp;  
 
-``` {r test-sums}
+``` {r test-sums, purl=FALSE}
 if (input == "bees") {
   out <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
   out
@@ -955,7 +952,7 @@ if (input == "bees") {
 ```
 
 #### Calculate risk scores
-``` {r bee-run-risk}
+``` {r bee-run-risk, purl=FALSE}
 if (input == "bees" | input == "both") {
   
   bee_risk <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
