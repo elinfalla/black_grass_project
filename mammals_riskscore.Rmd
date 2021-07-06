@@ -56,14 +56,21 @@ library(tidyverse) # for data manipulation
 
 
 ### 2.2 Read in required datasets  
-Load datasets and replace all NAs with 0s.  
+Two input files are required to calculate mammal risk scores:  
+
+* Species' requirements (variable name = "mammals") - requirements for survival per species, entered as binary data 
+
+* Farm management changes (variable name = "man_strats") - binary data on how the farm management strategies affect the species' resources  
+
+The files are read in and then all NA values are set to 0.
+
 ``` {r read-in-data}
 
 # farm management strategies
 man_strats <- read_xlsx("change.xlsx", 3) 
 man_strats <- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
-# mammal matrix data
+# mammal requirements data
 mammals <- read_xlsx("Mammal_requirements.xlsx", skip = 2) 
 
 
@@ -83,7 +90,7 @@ check_aligned <- function(data1_cols, data2_cols) {
   aligned <- identical(data1_cols, data2_cols)
   
   if (aligned == F) {
-    warning("Columns of management change and species requirements datasets are not aligned - calculations may not be correct.")
+    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
   }
 }
 ```
@@ -138,23 +145,20 @@ calculate_A_B <- function(data, strat) {
   # subset diet and habitat columns from data
   diets_habs <- data %>%
     select(diet_start : hab_end)
-  
-  hab_cols <- ncol(diets_habs %>% 
-                     select(hab_start : hab_end))
 
   # subset relevant columns from strategy data
   diets_habs_effects <- strat %>%
     select(diet_start : hab_end)
 
   # get column number of last diet column
-  hab_cols <- ncol(diets_habs %>% select(hab_start : hab_end))
+  num_hab_cols <- ncol(diets_habs %>% select(hab_start : hab_end))
   last_d_col <- ncol(diets_habs) - num_hab_cols
   
   # check requirements data and management change data align
-  check_aligned(colnames(diets_habs), colnames(strat))
+  check_aligned(colnames(diets_habs), colnames(diets_habs_effects))
   
   # find overlap between diet + hab requirements and management change
-  overlap <- data.frame(t(apply(diets_habs, 1, function(row) row & strat))) 
+  overlap <- data.frame(t(apply(diets_habs, 1, function(row) row & diets_habs_effects))) 
   names(overlap) <- names(diets_habs)
   
   # CALCULATE A (sum diet cols of overlap)

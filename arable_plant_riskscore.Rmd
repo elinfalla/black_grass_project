@@ -125,7 +125,7 @@ check_aligned <- function(data1, data2) {
   aligned <- identical(colnames(data1), colnames(data2))
   
   if (aligned == F) {
-    warning("Columns of management change and species requirements datasets are not aligned - calculations may not be correct.")
+    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
   }
 }
 ```

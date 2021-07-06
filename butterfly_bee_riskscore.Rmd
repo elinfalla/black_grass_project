@@ -58,14 +58,14 @@ $P_t$ is calculated as follows:
 $$P_t = \frac{G_t}{G*H}$$
 
 $G_t$ = total number of generations of the species' given life stage (i.e. $G_{ta}$ for adults, $G_{tl}$ for larvae) active in the activity periods affected  
-$G$ = number of generations of the life stage across all activity periods (i.e. per year)  
+$G$ = total number of species' life stage life cycle components (i.e. sum of the number of generations in each activity period), 
 $H$ = number of habitat components used by the species' life stage  
 
 -----
 
 #### **$F_t$** - reduction in forage plant availability
 $F_t$ is calculated as follows:  
-$$N_t = \frac{A}{F}$$
+$$F_t = \frac{A}{F}$$
 $A$ = number of points of coincidence between impact on and species life stage's use of forage plant families  
 $F$ = number of points of coincidence between species life stage's habitat use and the location of its forage plants  
 
@@ -74,6 +74,7 @@ $F$ = number of points of coincidence between species life stage's habitat use a
 #### **$N_t$** - reduced nest site availability (**for bees only**)
 $N_t$ is calculated as follows:  
 $$N_t = \frac{B}{N * H_n}$$  
+
 $B$ = number of points of coincidence between impact on and species use of nest sites  
 $N$ = number of nest sites  
 $H_n$ = number of habitats used where nest sites are likely to occur  
@@ -99,7 +100,7 @@ Determine which risk scores to calculate (bees, butterflies or both), by setting
 * "both"  
 
 ``` {r set-input}
-input <- "bees"
+input <- "both"
 
 if (input != "bees" & input != "butterflies" & input != "both") {
   stop("input is not set to an accepted value: choose 'bees', 'butterflies' or 'both'")
@@ -107,7 +108,7 @@ if (input != "bees" & input != "butterflies" & input != "both") {
 ```
 
 ### 2.3. Read in and process data  
-Load required datasets and replace all NAs with 0s. For both bees and butterflies, there are 4 data structures required to calculate risk scores:
+The required datasets are loaded and all NAs are replaced with 0s. For both bees and butterflies, there are 4 data structures required to calculate risk scores:
 
 * **Species requirements** - contains binary data on species' habitats, activity periods, generations per year (and nesting habitats in the case of bees)
 
@@ -116,6 +117,8 @@ Load required datasets and replace all NAs with 0s. For both bees and butterflie
 * **Forage plant locations** - contains binary data on which habitats each plant family can be found in
 
 * **Farm management strategies** - contains binary data on how each management change affects the species' requirements
+
+In addition, the plant families are alphabetised to ensure the same alignment, which is essential in order to easily cross reference between the forage plant locations and species forage plants datasets.  
 
 &nbsp;  
 
@@ -246,18 +249,34 @@ if (input == "bees" | input == "both") {
 }
 ```
 
+## 2.4. Create function to check column alignment
+It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+``` {r check-alignment}
+check_aligned <- function(data1, data2) {
+    
+  aligned <- identical(colnames(data1), colnames(data2))
+  
+  if (aligned == F) {
+    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
+  }
+}
+```
+
+
 ## 3. Calculate $P_t$ 
 For butterflies, this is $P_{ta}$ for adults, and $P_{tl}$ for larvae. The same is true for all parameters calculated.
 
 ### 3.1. Calculate $G$ and $H$
-$G$ = number of generations across all activity periods (i.e. total number of life cycle components)  
+$G$ = total number of species' life cycle components (i.e. sum of the number of generations in each activity period), 
 $H$ = number of habitat components used by the species  
+
+$H$ is calculated by summing up the habitat component columns of the species' requirements per species (row). However, the two habitats referring to the cropped area of the farmland - Cropped Arable (CA) and Cropped Grassland (CG) - are combined into a 'cropped area' habitat.  
+
+$G$ is calculated via row (i.e. per species) sums of the generations columns of the requirements dataset. These columns convey the number of generations of the species per year and the activity periods (early, mid or late) in which they lie.  
 
 ``` {r calc-G-H}
 calculate_G_H <- function(data) {
-  
-  # print message to user
-  print(" **** Calculating G and H.... ****")
   
   # create output dataframe
   output <- data.frame(H = rep(NA, nrow(data)),
@@ -275,10 +294,7 @@ calculate_G_H <- function(data) {
   output[,"G"] <- data %>%
     select(gens_start : gens_end) %>%
     rowSums(.)
-  
-  # print success message
-  print("**** Calculation complete! ****")
-  
+
   return(output)
 }
 
@@ -287,19 +303,21 @@ calculate_G_H <- function(data) {
 ### 3.2. Calculate $G_t$
 $G_t$ = number of generations of a species active in the activity periods affected
 
-Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.
+Here, 'strat' is a single management strategy - i.e. one row of the management strategy data frame.  
+
+In order to calculate $G_t$ , firstly the number of generations in each activity period (i.e. early, mid, late) is calculated for each species. Then, where there's an overlap between species' use of the activity period and effects of the management change on activity periods, the effect is multiplied by the number of generations in the affected activity period(s). These effects are then summed by row (species) to give $G_t$.  
+
+Note that in the calculation of $G_t$, the overlaps of the two crop habitats, cropped arable (CA) and cropped grassland (CG) are combined (using the 'or' function) before the final sum is calculated.  
 
 ``` {r calc-Gt}
 calculate_Gt <- function(data, strat) {
   
-  # print message to user
-  print("**** Calculating Gt.... ****")
-  
-  # select relevant cols of strat
+  # select activity period cols of management change data
   activity_effects <- strat %>%
     select(activity_start : activity_end) %>%
     select(-c(activity_start, activity_end)) # remove start and end cols
   
+  # select activity periods and generation data from species requirements
   activity <- data %>%
     select(activity_start : activity_end) %>%
     select(-c(activity_start, activity_end))
@@ -308,6 +326,7 @@ calculate_Gt <- function(data, strat) {
     select(gens_start : gens_end) %>%
     select(-c(gens_start, gens_end))
   
+  # find out the number of generations present in each activity period (early, mid, late)
   early <- gens_per_period %>%
     select(contains("early")) %>%
     rowSums(.)
@@ -318,52 +337,54 @@ calculate_Gt <- function(data, strat) {
     select(contains("late")) %>%
     rowSums(.)
   
-  # isolate habs to work out number of habitats (4 for butterfly, 3 for bee)
+  # isolate habs to work out total number of habitats (4 for butterfly, 3 for bee)
   habs <- data %>%
     select(hab_start : hab_end, 
            -c(hab_start, hab_end))
   
-  all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), ncol(habs)-1))
+  all_gens_per_period <- data.frame(rep(data.frame(early, mid, late), ncol(habs)-1)) # -1 as CA and CG are combined to become 'cropped area'
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
-  aligned <- identical(colnames(activity), colnames(activity_effects))
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(activity, activity_effects)
   
-  if (aligned == F) {
-    warning(paste0("WARNING: Butterfly/bee data and management strategy columns do not align/are not the same - Gt calculations will be incorrect. Lifestage = ", i, ", 1=adult, 2=larvae"))
-  }
-  
-  # find overlap
-  overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects))) # NOTE: THIS ASSUMES THE COLUMNS ALIGN
+  # find overlap between activity periods used and activity periods affected by the management strategy
+  overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects)))
   names(overlap) <- names(activity_effects)
   
-  Cropped <- t(apply(overlap, 1, function(row) row[7:9] | row[10:12] ))  # 7:9 = CA cols, 10:12 = CG cols
+  # get index of CA (cropped arable) and CG (cropped grassland) columns in overlap
+  overlap_CA_only <- overlap %>% select(contains("CA_"))
+  overlap_CG_only <- overlap %>% select(contains("CG_"))
+  
+  CA_cols <- which(names(overlap) %in% names(overlap_CA_only))
+  CG_cols <- which(names(overlap) %in% names(overlap_CG_only))
+  
+  # combine the CA and CG overlaps into a 'cropped area' overlap
+  Cropped <- t(apply(overlap, 1, function(row) row[CA_cols] | row[CG_cols] ))  # 7:9 = CA cols, 10:12 = CG cols
   
   truncated_overlap <- as_tibble(overlap) %>%
     select(-contains(c("CA","CG"))) %>%
     cbind(., Cropped)
   
+  # multiply activity period effects by the number of generations in the activity period
   all_gens_affected <- truncated_overlap * all_gens_per_period
   
+  # calculate Gts
   Gt <- rowSums(all_gens_affected)
-  
-  # print success message
-  print("**** Calculation complete! ****")
   
   return(Gt)
   
 }
 
+calculate_Gt(bee, bee_man_strats[1,])
+
 ```
 
 ### 3.3. Calculate Pt
-Pta = Gta/(Ga*Ha)  
-Ptl = Gtl/(Gl*Hl)  
 
+This function calls the relevant functions defined above in order to calculate $P_t$ for all species for a particular management strategy.  
 ``` {r calc-Pt}
 calculate_Pt <- function(data, strat) {
-  
-  # print message to user
-  print("###### CALCULATING PT... ######")
   
   G_H <- calculate_G_H(data)
   G <- G_H$G
@@ -381,9 +402,6 @@ calculate_Pt <- function(data, strat) {
       0, # if yes
       Pt  # if no
     )
-  
-  # print success message
-  print("###### PT CALCULATION COMPLETE ######")
   
   return(Pt)
 }
@@ -410,23 +428,25 @@ if (input == "bees") {
 $F$ = points of coincidence between species habitat use and the location of its forage plants  
 $A$ = number of points of coincidence between the impact on and species’ use of forage plant families  
 
-Butterflies have long tongues and so forage plants don't differ between species. This means adults of all species have the same set of forage plants. Therefore, $F_a$ ($F$ for adults) will just be the total number of forage plants found in the foraging habitat(s) of each butterfly species.  
 
-Butterfly larvae (caterpillars) have much more specific plant forage families, as do the bee species.  
+Calculating $A$ and $F$ relies on subsetting the plant locations dataset, which has plant families down the rows and the habitats across the columns. If a plant family is found in a habitat, that cell is populated with a 1. Else, it's a 0. $F$ and $A$ are calculated per species in a loop. The first step is subsetting the rows (plant families) of the plant location data to only those the species forages on, as this is required for the calculation of both $A$ and $F$.  
+
+To calculate $F$, this new dataset with only species-specific plant families is subsetted further to only the habitats that the species forages on. After this, the rows (plant families) and columns (habitats) remaining are only those relevant to the species. The presences (all the 1s) are then summed to give $F$, the overlap between species' habitat use and the location of its forage plants. Note that if the species is present in both crop habitats (arable and grassland), these columns are substituted for a combined 'cropped area' column before summing.  
+
+For the calculation of $A$, first the overlap between the forage habitats used by the species and the effect of the management change on these habitats is calculated. This overlap is split into 'general' habitat quality effects and those affecting damp plants specifically. A value for $A$ is calculated for each effect individually, and these are summed to give a final $A$ value. For each individual effect, $A$ is calculated per species in a loop, as for $F$. Similar to $F$, the plant location data subsetted to species-specific plant families (rows) is used, but rather than subsetting to only habitats (columns) used by the species, the dataset is subsetted to only habitats for which there was an overlap - i.e. one that is both affected by the change and used by the species. After this, similar to for $F$, the presences in this subsetted plant locations dataset are summed to give the value for $A$. However, for the damp-plant-specific effects, the plant families (rows) are further subsetted to only families with an affinity for damp conditions before summing.  
+
+There are a couple of extra conditions in the calculation of $A$. Firstly, similar to in the calculation of $F$, if both crop habitats (arable and grassland) are affected, then these columns are substituted for a combined 'cropped area' column. Secondly, the 'cropped area' column is also used if the management change affects both crop habitats, and the species uses at least one of them as well as at least one non-crop habitat. Thirdly, the plant family 'Crops' is removed from the plant locations data for the calculation of $A$, as it's assumed that the crops will not be negatively affected by any management change.  
+
+**About species forage plants:**  
+
+* Butterflies have long tongues and so forage plants don't differ between species. This means adults of all butterfly species have the same set of forage plants. Therefore, $F_a$ ($F$ for adults) will just be the total number of forage plants found in the foraging habitat(s) of each butterfly species.  
+
+* Butterfly larvae (caterpillars) have much more specific plant forage families, as do the bee species.  
 
 ``` {r calc-F-A}
 calculate_A_F <- function(data, plants, plant_locs, strat) {
   
-  # print message to user
-  print("**** Calculating A and F.... ****")
-  
-  # PUT IN CHECK THAT COLUMNS ALIGN
-  
-  # select hab + damp cols of change data
-  hab_effects <- strat %>%
-    select(hab_start:hab_end, damp_start:damp_end)
-  
-  # pull plant names from plant_locs and plants, to check they are the same
+  # pull plant names from plant locations and species' forage plants, to check they are the same
   plant_locs_names <- plant_locs %>% pull(plantfamily)
   plants_names <- colnames(plants %>% 
                              select(plants_start:plants_end) %>% 
@@ -434,7 +454,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
   
   # check plant names are the same, print warning if not
   if (identical(plant_locs_names, plants_names) == F) {
-    warning("WARNING: columns of butterfly forage plants are not the same as rows of plant locations data, i.e. plant species are not the same. Calculations may be incorrect.")
+    warning("WARNING: columns of butterfly forage plants are not the same as rows of plant locations data, i.e. plant families are not the same. Calculations may be incorrect.")
     
     print("Cols of butterfly plant data:")
     print(paste(plants_names))
@@ -445,14 +465,22 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
   output <- data.frame(F = rep(NA, nrow(data)),
                        A = rep(NA, nrow(data)))
   
-  # subset appropriate butterfly requirements data to habitat and damp cols
-  habs <- data %>% 
-    select(hab_start:hab_end, damp_start:damp_end)
-  
-  # select plant species cols from butterfly forage plants data
+  # select plant species cols from species' forage plants data
   forage_plants <- plants %>% 
     select(plants_start : plants_end) %>%
     select(-c(plants_start, plants_end)) # remove marker cols
+  
+  
+  # subset species' requirements data to habitat and damp cols
+  habs <- data %>% 
+    select(hab_start:hab_end, damp_start:damp_end)
+  
+  # select habitat + damp cols of change data
+  hab_effects <- strat %>%
+    select(hab_start:hab_end, damp_start:damp_end)
+  
+  # check species requirements ("habs") and change data ("hab_effects") columns are aligned (i.e. the same)
+  check_aligned(habs, hab_effects)
   
   # find overlap between species habitat use and effects on habitat
   overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
@@ -505,12 +533,12 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     sp_habs <- sp_habs[species,]
     
     # remove 'cropped area' (CA) habitat + species names cols so the sp_plant_loc cols align with sp_habs (species habitat)
-    no_CA_plant_locs <- sp_plant_locs %>%
+    subsetted_plant_locs <- sp_plant_locs %>%
       select(-c(croppedarea, plantfamily))
 
     
     # subset sp_plant_locs to only habitats occupied by the species
-    all_forage_plants <- no_CA_plant_locs[,which(sp_habs != 0)]
+    all_forage_plants <- subsetted_plant_locs[,which(sp_habs != 0)]
     
     # if both grass and arable fields are selected (are part of species habitat), then remove them and replace with 'croppedarea' col
     if (has_name(all_forage_plants, "grassfields") && has_name(all_forage_plants, "arablefields")) {
@@ -522,17 +550,20 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     
     # CALCULATE A
     
-    # find all plants affected by general and damp hab effects
+    # group the general and damp habitat effects
     sp_effects <- list(sp_general_effects, sp_damp_effects)
     plants_affected <- c(NA, NA)
     
     # remove species name col from no_crop_sp_plant_locs (so cols align with the hab effects)
     no_crop_sp_plant_locs <- no_crop_sp_plant_locs %>%
       select(-plantfamily)
-
+    
     for (effect in 1:length(sp_effects)) {
-      
+
+      # subset plant locations to only habitats where there was an overlap between species use and strategy impact
       plant_locs_affected <- no_crop_sp_plant_locs[,which(sp_effects[[effect]] != 0)]
+      
+      #plant_locs_affected <- sweep(no_crop_sp_plant_locs, 2, sp_effects[[effect]], FUN = "*")
       
       if (ncol(plant_locs_affected) == 0) {
         
@@ -546,7 +577,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
           select(-c(grassfields, arablefields)) %>%
           cbind(., no_crop_sp_plant_locs$croppedarea)
       } 
-      else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0){ #  if strat affects all crops (not damp???)
+      else if (hab_effects$CG_hab != 0 & hab_effects$CA_hab != 0){ #  if strat affects all crops 
         if (sum(has_name(plant_locs_affected, c("grassfields", "arablefields"))) > 0) { # if sp is on at least 1 crop
 
           if (sum(sp_habs) > 1) { # if sp is also on at least 1 other hab
@@ -575,9 +606,6 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     output[species, "A"] <- total_plants_affected
   }
   
-  # print success message
-  print("**** Calculation complete! ****")
-  
   return(output)
 }
 
@@ -598,11 +626,9 @@ if (input == "bees") {
 
 ### 4.2. Calculate $F_t$
 
+This function calls the relevant functions defined above, in order to calculate $F_t$ for all species for a particular management change.  
 ``` {r calc-Ft}
 calculate_Ft <- function(data, plants, plant_locs, strat) {
-  
-  # print message to user
-  print("###### CALCULATING FT... ######")
   
   A_F <- calculate_A_F(data, plants, plant_locs, strat)
   A <- A_F$A
@@ -619,67 +645,58 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
       Ft  # if no
     )
   
-  # print success message
-  print("###### FT CALCULATION COMPLETE ######")
-  
   return(Ft)
 }
 
 ```
 
 ``` {r tet-ft}
-out <- data.frame(species = all_species,
+if (input == "bees") {
+  out <- data.frame(species = all_species,
                   Ft = calculate_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
 
 bombus <- out %>%
   filter(grepl("Bombus", species))
 bombus
+}
+
 ```
 
 ## 5. Calculate $N_t$ (for bees only)
 
 $N_t$ = risk score associated with reduced nesting site availability  
 
-$$N_t = \frac{B}{(N * H_n)}$$ 
+$$N_t = \frac{B}{(N * H_n)}$$
 where  
 $B$  = number of points of coincidence between the impact on and species' use of nest sites  
 $N$  = number of nest sites used  
 $H_n$ = number of habitats used where nest sites are likely to occur  
 
 ### 5.1. Calculate $N$ and $H_n$
+
+For calculation of $N$ and $H_n$, rather than calculating them separately, $N * H_n$ (the denominator of $N_t$) is calculated. This is due to how the data is structured - the possible nest sites are recorded per the habitats they are present in, so a simple row sum of the nesting data gives $N * H_n$, which is the number of nest sites used, summed across all the habitats used where the nest sites occur.  
+
 ``` {r calc-N-Hn}
 calculate_N_Hn <- function(data) {
   
-  nest_sites <- c("Versatile", "Aerial", "Bare", "Extensive", "Open", "Snail")
-  N <- 0
+  # calculate H times N
+  N_times_Hn <- data %>%
+    select(nest_start : nest_end,
+           -c(nest_start, nest_end)) %>%
+    rowSums(.)
   
-  for (site in 1:length(nest_sites)) {
-    site_count <- data %>% 
-      select(contains(nest_sites[site])) %>%
-      mutate(count = rowSums(.) | 0)
-    
-    N <- N + site_count$count
-  }
-  
-  nest_habitats <- c("H_N", "M_N", "CG_N", "CA_N")
-  Hn <- 0
-  
-  for (hab in 1:length(nest_habitats)) { 
-    hab_count <- data %>%
-      select(contains(nest_habitats[hab])) %>%
-      mutate(count = rowSums(.) | 0)
-    
-    Hn <- Hn + hab_count$count
-  }
-  
-  return(data.frame(N, Hn))
+  return(N_times_Hn)
 }
 ```
 
-### 5.2. Calculate $B$
+### 5.2. Calculate $B$  
+
+$B$ is the overlap between effects on and species' use of nest sites, which is calculated using the '&' operator: returning true only if the species uses the nest site and its affected by the management change. This is applied row-wise (i.e. per species) to the species requirements data, and then summed row-wise to give the total overlap per species, $B$.  
+
 ``` {r calc-b}
 calculate_B <- function(data, strat) {
   
+  # extract nesting data from species' requirements and change data
   nesting <- data %>% 
     select(nest_start : nest_end) %>%
     select(-c(nest_start, nest_end))
@@ -688,8 +705,13 @@ calculate_B <- function(data, strat) {
     select(nest_start : nest_end) %>%
     select(-c(nest_start, nest_end))
   
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(nesting, nesting_effects)
+  
+  # calculate overlap between nesting requirements and effects
   overlap <- as.data.frame(t(apply(nesting, 1, function(row) row & nesting_effects)))
   
+  # calculate B
   B <- rowSums(overlap)
   
   return(B)
@@ -697,19 +719,19 @@ calculate_B <- function(data, strat) {
 ```
 
 ### 5.3. Calculate $N_t$
-$$N_t = \frac{B}{N * H_n}$$ 
+$$N_t = \frac{B}{N * H_n}$$
+
+This function calculates $N_t$, using the relevant equations defined above, for all species for a specific management change.  
 
 ``` {r calc-Nt}
 calculate_Nt <- function(data, strat) {
   
-  N_Hn <- calculate_N_Hn(data)
-  N <- N_Hn$N
-  Hn <- N_Hn$Hn
-  
+  N_times_Hn <- calculate_N_Hn(data)
+
   B <- calculate_B(data, strat)
 
   # CALCULATE Nt
-  Nt <- B / (N * Hn)
+  Nt <- B / N_times_Hn
 
   # replace infinite or NA values with 0
   Nt <- 
@@ -762,6 +784,9 @@ separate_lifestages <- function(data) {
 &nbsp;  
 
 #### Function to calculate risk scores
+
+This function, unlike the functions defined up to this point, can take multiple management strategies and outputs risk scores for each butterfly species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
+
 ``` {r butt-calc-riskscore}
 calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
@@ -874,6 +899,9 @@ if (input == "butterflies" | input == "both") {
 ### 6.2. Bees
 
 #### Function to calculate risk scores
+
+This function, like the butterfly risk score function above, can take multiple management strategies and outputs risk scores for each bee species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
+
 ``` {r bee-calc-riskscore}
 calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
   
@@ -938,7 +966,7 @@ if (input == "bees" | input == "both") {
   
   #bee_butler_risk <- c(2.06,0.80,2.21,0.94,0.75,0.77,2.36,1.25,0.73,2.38,1.29,1.40,4.23,0.78)
   
-  bee_butler_risk <- read_xls("Butler_validation/Pollinator risk assessment database.xls", 9)
+  bee_butler_risk <- read_xlsx("Butler_validation/Pollinator risk assessment database.xlsx", 9)
   
   bee_butler <- data.frame(species = bee_butler_risk$Species,
                        butler_risk = round(bee_butler_risk$score, 2),
