@@ -33,7 +33,7 @@ The method calculates risk based on the overlaps between the resource requiremen
 
 The risk score is calculated as follows: 
 
-$$Risk Score = \frac{(G_t + F_t + N_t + M_t)} {R}$$  
+$$Risk Score = \frac{(G_t + F_t + N_t + M_t)} {R}$$
 
 where $G_t$ is the risk score associated with reduced germination potential, $F_t$ is the risk score associated with reduced flowering potential, $N_t$ is the risk score associated with increased fertiliser application, $M_t$ is the risk score associated with reduced soil moisture and $R$ is the species’ reliance on farmland habitat.
 
@@ -49,7 +49,7 @@ $H$ = number of habitat components used by the species
 -----  
 
 $F_t$ is calculated as follows:  
-$$F_t = \frac{B}{F*H}$$  
+$$F_t = \frac{B}{F*H}$$
 
 $B$ = number of points of coincidence between impact on and species' use of available flowering periods
 $G$ = number of flowering periods used by the species
@@ -58,16 +58,24 @@ $H$ = number of habitat components used by the species
 -----
 
 $N_t$ is calculated as follows:  
-$$N_t = \frac{(10 - E) + 1}{10}$$  
+$$N_t = \frac{C * (10 - E) + 1}{10}$$
 
-$E$ = Ellenburg score for Nitrogen affinity
+$E$ = species' Ellenberg score for Nitrogen affinity
+$C$ = number of points of coincidence between impact of increased nitrogen on habitats and species' use of those habitats
+
+Note that this equation is different to Butler's original, but uses the same method he did. It just more clearly represents the process.  
 
 -----
 
 $M_t$ is calculated as follows:  
-$$M_t = \frac{M}{10}$$
+$$M_t = \frac{M}{10} * \frac{D}{H}$$
 
-$M$ = Ellenburg score for soil moisture affinity
+$M$ = species' Ellenberg score for soil moisture affinity  
+$D$ = number of points of coincidence between impact of decreased moisture on habitats and species' use of those habitats  
+$H$ = number of habitat components used by the species  
+
+Note that this equation is different to Butler's original, but uses the same method he did. It just more clearly represents the process.  
+
 
 ## 2. Set-up
 ### 2.1. Load packages
@@ -81,11 +89,19 @@ library(tidyverse) # for data manipulation
 
 
 ### 2.2. Read in required datasets  
-Load datasets and replace all NAs with 0s.  
+
+Two input files are required to calculate broadleaf arable plant risk scores:  
+
+* Species' requirements - requirements for survival per species, entered as binary data (with the exception of moisture and nitrogen Ellenberg scores)  
+
+* Farm management changes - binary data on how the farm management strategies affect the species' resources  
+
+The files are read in and then all NA values are set to 0.  
+
 ``` {r read-in-data}
 
 # farm management strategies
-man_strats <- read_xlsx("change.xlsx", 6, skip = 1)
+man_strats <- read_xlsx("change.xlsx", 7, skip = 1)
 
 # mammal matrix data
 plants <- read_xlsx("Arable_plant_requirements.xlsx", skip = 1) 
@@ -100,47 +116,69 @@ plants <- plants %>%
 
 ```
 
+### 2.3. Create function to check column alignment
+It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+``` {r check-alignment}
+check_aligned <- function(data1, data2) {
+    
+  aligned <- identical(colnames(data1), colnames(data2))
+  
+  if (aligned == F) {
+    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
+  }
+}
+```
+
 ## 3. Calculate $G_t$
 
-### 3.1. Calculate $$ H * G $$ and $A$
+$$G_t = \frac{A}{G*H}$$
+$G_t$ is the risk score associated with reduced germination potential.  
 
-Here rather than separately calculating $H$ and $G$, I calculate $H * G$ (the denominator of the $G_t$ equation) as this is easily calculated from the germination data, as it's written in as germination periods per habitat.  
+### 3.1. Calculate $$ G * H $$ and $A$
 
-EXPLAIN G_TIMES_H HERE
+Here, rather than separately calculating $H$ (number of habitat components used by each species) and $G$ (number of germination periods used by each species), I calculate $H * G$ (the denominator of the $G_t$ equation). I do this as the germination data is provided per habitat, so summing these data per species gives a calculation of $$ G * H $$.  
 
+The calculation of $A$ uses a straightforward overlap between the management change effects on germination and species germination requirements. The management change is applied sequentially to each species (row of requirements data), and the '&' operator is used, meaning an impact is recorded if there is a non-zero value in both data sets in a particular column. This indicates both that the species uses the particular resource and that it's impacted by the management change. These impacts are then summed per species (row) to give a value for $A$ per species.
 
+ 
 ``` {r calc-Gt}
 calculate_H_G_A <- function(data, strat) {
   
+  # extract germination cols of species requirements and management strats
   germination <- data %>%
+    select(germ_start : germ_end,
+           -c(germ_start, germ_end))
+  
+    germination_effects <- strat %>%
     select(germ_start : germ_end,
            -c(germ_start, germ_end))
   
   # calculate H * G (denominator of Gt equation)
   H_times_G <- germination %>%
     rowSums(.)
+
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(germination, germination_effects)
   
-  # calculate A
-  germination_effects <- strat %>%
-    select(germ_start : germ_end,
-           -c(germ_start, germ_end))
-  
+  # calculate overlap between germination requirements and effects
   overlap <- t(apply(germination, 1, function(row) row & germination_effects))  
   
+  # calculate A
   A <- rowSums(overlap)
   
   return(data.frame(H_times_G, A))
 }
 ```
 
-``` {r test-H-G-A}
-calculate_H_G_A(plants, man_strats[1,])
-```
 
 ### 3.2. Calculate $G_t$  
 
+This function calls ```calculate_H_G_A()``` then uses the output to calculate $G_t$ for each species.  
+
 ``` {r calc-A}
 calculate_Gt <- function(data, strat) {
+  
   H_G_A <- calculate_H_G_A(data, strat)
   A <- H_G_A$A
   H_times_G <- H_G_A$H_times_G
@@ -160,43 +198,42 @@ calculate_Gt <- function(data, strat) {
 }
 ```
 
-``` {r test-gt}
-all_species <- plants$Species
-dat <- data.frame(species = all_species,
-           Gt = calculate_Gt(plants, man_strats[4,]))
-nrow(dat[dat$Gt != 0,])
-dat[80,]
-butler <- read_xlsx("butler_plants_risk.xlsx")
-
-butler$Gt_1 == dat[dat$Gt != 0, "Gt"]
-```
 
 ## 4. Calculate $F_t$
 
+$$F_t = \frac{B}{F*H}$$
+
+$F_t$ is the risk score associated with reduced flowering potential.  
+
 ### 4.1. Calculate $$ F * H $$ and $B$
 
-Here, similar to the calculation of $G_t$, I calculate $$H * F$$ (denominator of $F_t$ equation) directly, rather than calculating $H$ and $F$ separately.  
+Here, similar to in the calculation of $G_t$, I calculate $H * F$ (denominator of $F_t$ equation) directly, rather than calculating $H$ and $F$ separately. This was due to the fact that the flowering data was inputted per habitat, as for in the calculation of $G_t$.  
 
-EXPLAIN F_TIMES_H HERE
+$B$ is also calculated in the same way as $A$ is in the calculation of $G_t$, but using the flowering data from species' requirements and farm management datasets, rather than germination data - see explanation of $A$ above.  
 
 ``` {r calc-F-H_B}
 calculate_H_F_B <- function(data, strat) {
   
+  # extract flowering data from species requirements and management strat
   flowering <- data %>%
     select(flower_start : flower_end,
            -c(flower_start, flower_end))
+  
+  flowering_effects <- strat %>%
+  select(flower_start : flower_end,
+         -c(flower_start, flower_end))
   
   # calculate F * H (denominator of Ft equation)
   F_times_H <- flowering %>%
     rowSums(.)
   
-  # calculate B
-  flowering_effects <- strat %>%
-    select(flower_start : flower_end,
-           -c(flower_start, flower_end))
+  # check requirements and change data columns are aligned (i.e. the same)
+  check_aligned(flowering, flowering_effects)
   
+  # calculate overlap between flowering requirements and change effects
   overlap <- t(apply(flowering, 1, function(row) row & flowering_effects))  
   
+  # calculate B
   B <- rowSums(overlap)
   
   return(data.frame(F_times_H, B))
@@ -209,8 +246,12 @@ calculate_H_F_B(plants, man_strats[1,])
 ```
 
 ### 4.2. Calculate $F_t$
+
+This function calculates $F_t$ for each species by calling ```calculate_H_F_B()```.  
+
 ``` {r calc-Ft}
 calculate_Ft <- function(data, strat) {
+  
   H_F_B <- calculate_H_F_B(data, strat)
   B <- H_F_B$B
   F_times_H <- H_F_B$F_times_H
@@ -230,20 +271,22 @@ calculate_Ft <- function(data, strat) {
 }
 ```
 
-``` {r }
-plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 7)
-
-dat <- data.frame(species = all_species,
-                  Ft = calculate_Ft(plants, man_strats[4,]))
-#dat$Ft <- add_condition(plants, dat$Ft, "_Au")  # add the condition that the species germinates in autumn to Ft
-
-dat[dat$Ft != 0, "Ft"] == plant_validation[, "Score"]
-dat[dat$Ft != 0,]
-dat[80,]
-```
-
 
 ## Calculate $N_t$ and $M_t$
+
+$$N_t = \frac{C * (10 - E) + 1}{10}$$
+$N_t$ is the risk score associated with increased fertiliser application.  
+
+$$M_t = \frac{M}{10} * \frac{D}{H}$$
+
+$M_t$ is the risk score associated with reduced soil moisture.  
+
+----- 
+
+For the calculation of $N_t$ and $M_t$, $C$ and $D$ are their respective overlap parameters, recording the impact of the change on habitats and species' use of those habitats. This is calculated in the same way as $A$ and $B$ - see explanation of $A$ for more detail.
+
+In the calculation of $N_t$, $$\frac{(10 - E + 1)}{10}$$ is the base calculation of the potential impact of increased nitrogen on a particular species, based on its Ellenberg nitrogen score ($E$). For $M_t$, the same is true for $$\frac{M}{10}$$. Whether this potential impact is seen depends on the respective overlap parameter ($C$ and $D$). For $M_t$, the risk is calculated per habitat (hence the division by $H$) and summed, leading to a maximum risk of $$\frac{M}{10}$$ if all habitats are affected. For $N_t$ however, this is not the case; the potential total risk is 3 times $$\frac{(10 - E + 1)}{10}$$ (as there are 3 habitats), which would correspond to a $C$ value of 3, indicating all habitats are affected. The reason for this difference is that it is very unlikely that increased nitrogen via fertiliser application will be relevant to habitats other than the cropped area, whereas the effect of reduced moisture is more likely to be seen across multiple habitats, making a per-habitat calculation necessary.    
+
 ``` {r calc-Nt-Mt}
 calculate_Nt_Mt <- function(data, strat) {
   
@@ -252,45 +295,46 @@ calculate_Nt_Mt <- function(data, strat) {
     select(nitro_start : nitro_end,
            -c(nitro_start, nitro_end))
   
-  E <- data %>% # ellenberg nitrogen affinity score
-    pull(Nitrogen)
-
   nitrogen_effects <- strat %>%
-    select(nitro_start : nitro_end,
-           -c(nitro_start, nitro_end))
-  
+  select(nitro_start : nitro_end,
+         -c(nitro_start, nitro_end))
+
   # select moisture affinity cols from plant requirements and man_strats
   moisture <- data %>%
     select(moist_start : moist_end,
            -c(moist_start, moist_end))
   
-  M <- data %>% # ellenberg moisture affinity score
-    pull(Moisture)
-
   moisture_effects <- strat %>%
     select(moist_start : moist_end,
            -c(moist_start, moist_end))
+
+  # extract E: Ellenberg nitrogen affinity score
+  E <- data %>% 
+    pull(Nitrogen)
   
-  # extract number of habitats each species occupies (to work out E and M)
-  num_habs <- data %>%
+  # extract M: Ellenberg moisture affinity score
+  M <- data %>% 
+    pull(Moisture)
+
+  # calculate H: number of habitats each species occupies (for calculation of Mt)
+  H <- data %>%
     select(hab_start : hab_end) %>%
     rowSums(.)
+
+  # check column alignment for nitrogen and moisture data
+  check_aligned(nitrogen, nitrogen_effects)
+  check_aligned(moisture, moisture_effects)
   
-  # calculate Nt for each species (nitrogen affinity)
-  Nt <- (10 - E + 1) / 10
-  #Nt_per_hab <- Nt / num_habs
+  # calculate C and D: overlaps between requirements and management strat for moisture and nitrogen
+  C_temp <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
+  D_temp <- t(apply(moisture, 1, function(row) row & moisture_effects))
   
-  # calculate Mt for each species (moisture affinity), and divide by number of habitats to get per habitat score
-  Mt <- M / 10
-  Mt_per_hab <- Mt / num_habs
+  C <- rowSums(C_temp)
+  D <- rowSums(D_temp)
   
-  # calculate overlaps between requirements and management strat for moisture and nitrogen
-  nitro_overlap <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
-  moist_overlap <- t(apply(moisture, 1, function(row) row & moisture_effects))
-  
-  # multiply Nt and Mt_per_hab by overlaps to take man strat into account
-  Nt <- rowSums(nitro_overlap) * Nt
-  Mt <- rowSums(moist_overlap) * Mt_per_hab
+  # CALCULATE NT AND MT
+  Nt <- C * (10 - E + 1) / 10
+  Mt <- D/H * M/10
   
   return(data.frame(Nt, Mt))
 }
@@ -319,24 +363,24 @@ calculate_Nt_Mt(plants, man_strats[2,])
 # write_xlsx(plants, "plants_nitrogen.xlsx")
 
 ```
-``` {r test-sums}
 
-```
 
 ## Calculate risk scores
 
-### Make function for autumn sowing condition
-Autumn sowing management change causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
+### Make function for autumn sowing condition (one of Butler's management changes)
+The 'autumn sowing' management change used by Butler causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
 
-I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, I'm adding a condition that the species must be autumn germinating to $F_t$, which is implemented in calc_plant_risk().  
+I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, implemented in the ```calc_plant_risk()``` function below, I'm adding a condition that the species must be autumn germinating to $F_t$ (the effects on flowering).  
 
 ``` {r aut-sow}
 add_condition <- function(data, parameter, condition) {
   
+  # condition will be non-zero if species uses resources in any of conditioned cols
   condition <- data %>%
     select(contains(condition)) %>%
     rowSums(.)
   
+  # if condition is non-zero, leave parameter, else set parameter to 0.
   conditioned_param <- 
     ifelse(
       condition != 0,
@@ -350,6 +394,7 @@ add_condition <- function(data, parameter, condition) {
 ```
 
 
+The below function calls all the functions defined above in order to calculate a final risk score. Note that, for the functions defined up to this point, parameters are calculated for a single management change. The function below can handle multiple management changes, and will output a risk score for each, as well as a total risk score, calculated by summing up the risk scores of all the changes.  
 
 ``` {r calc-risk}
 calc_plant_risk <- function(data, strategies) {
@@ -382,7 +427,8 @@ calc_plant_risk <- function(data, strategies) {
     Nt <- Nt_Mt$Nt
     Mt <- Nt_Mt$Mt
     
-    riskscores[,strat+1] <- (Gt + Ft + Nt + Mt) #/ R
+    # CALCULATE RISK SCORE
+    riskscores[,strat+1] <- (Gt + Ft + Nt + Mt) / R
     
   }
   
@@ -397,8 +443,8 @@ calc_plant_risk <- function(data, strategies) {
 
 ``` {r test-risk}
 risk <- calc_plant_risk(plants, man_strats)
-risk[which(butler$same == F),]
-butler[which(butler$same == F),]
+#risk[which(butler$same == F),]
+#butler[which(butler$same == F),]
 
 butler <- read_xlsx("butler_plants_risk.xlsx")
 
@@ -415,14 +461,5 @@ butler$diff <- butler$my_risk - butler$total_risk
 butler
 print(paste("correct species =", sum(butler$same), "/", nrow(risk))) # 26. 28 with Nt/Mt counted once
 
-which(butler$same == F)
-
-nrow(plants[plants$C_hab == 1,]) # 102
-nrow(plants[plants$H_Herbi == 0 & plants$M_Herbi == 0 & plants$C_Herbi == 0 ,]) # 85
-nrow(plants[plants$H_Moisture == 2 | plants$M_Moisture == 2 | plants$C_Moisture == 2 ,]) # 173
-
-before <- risk[36,]
-before
-after <- risk[36,]
-after
+which(butler$my_risk != butler$total_risk * -1)
 ```
