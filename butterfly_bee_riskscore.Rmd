@@ -7,7 +7,7 @@ output:
   word_document: default
 fontsize: 11pt
 ---
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, purl=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -73,7 +73,7 @@ $F$ = number of points of coincidence between species life stage's habitat use a
 
 #### **$N_t$** - reduced nest site availability (**for bees only**)
 $N_t$ is calculated as follows:  
-$$N_t = \frac{B}{N * H_n}$$  
+$$N_t = \frac{B}{N * H_n}$$
 
 $B$ = number of points of coincidence between impact on and species use of nest sites  
 $N$ = number of nest sites  
@@ -90,7 +90,20 @@ library(tidyverse) # for data manipulation
 
 ```
 
-### 2.2. Determine required risk score calculation (**USER INPUT REQUIRED**)
+## 2.2. Load necessary functions
+
+```riskscore_functions.R``` contains functions used by all risk score scripts. It contains:  
+
+* **check_aligned()** - It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. This function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+* **NA_to_zero()** - Replaces all NAs in a dataset with zeros.  
+
+``` {r check-alignment}
+source("riskscore_functions.R")
+```
+
+
+### 2.3. Determine required risk score calculation (**USER INPUT REQUIRED**)
 Determine which risk scores to calculate (bees, butterflies or both), by setting the **input** variable to one of either:  
 
 * "bees"  
@@ -99,7 +112,8 @@ Determine which risk scores to calculate (bees, butterflies or both), by setting
 
 * "both"  
 
-``` {r set-input, purl=FALSE}
+The default value is "both".  
+``` {r set-input}
 input <- "both"
 
 if (input != "bees" & input != "butterflies" & input != "both") {
@@ -107,7 +121,7 @@ if (input != "bees" & input != "butterflies" & input != "both") {
 }
 ```
 
-### 2.3. Read in and process data  
+### 2.4. Read in and process data  
 The required datasets are loaded and all NAs are replaced with 0s. For both bees and butterflies, there are 4 data structures required to calculate risk scores:
 
 * **Species requirements** - contains binary data on species' habitats, activity periods, generations per year (and nesting habitats in the case of bees)
@@ -120,14 +134,13 @@ The required datasets are loaded and all NAs are replaced with 0s. For both bees
 
 In addition, the plant families are alphabetised to ensure the same alignment, which is essential in order to easily cross reference between the forage plant locations and species forage plants datasets.  
 
+Note that the farm management strategies are read in a separate chunk with ```purl = FALSE``` so if the file is sourced, a user can load their own management strategy dataset. It must however, follow the same format as the butt_man_strats / bee_man_strats dataset.  
+
 &nbsp;  
 
 #### For butterflies:
 ``` {r butt-read-in-data, message=FALSE}
 if (input == "butterflies" | input == "both") {
-  
-  # farm management strategies
-  butt_man_strats <- read_xlsx("change.xlsx", 5)
   
   # butterfly requirements matrix data
   butterfly <- read_xlsx("Butterfly_requirements.xlsx", skip = 3)
@@ -139,17 +152,11 @@ if (input == "butterflies" | input == "both") {
   butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
   
   # replace NAs with 0s in all datasets
-  butt_man_strats <- butt_man_strats %>%
-    mutate_all( ~ replace(., is.na(.), 0))
+  butterfly <- NA_to_zero(butterfly)
   
-  butterfly <- butterfly %>%
-    mutate_all( ~ replace(., is.na(.), 0))
+  butt_plant_locs <- NA_to_zero(butt_plant_locs)
   
-  butt_plant_locs <- butt_plant_locs %>%
-    mutate_all( ~ replace(., is.na(.), 0))
-  
-  butterfly_plants <- butterfly_plants %>%
-    mutate_all( ~ replace(., is.na(.), 0))
+  butterfly_plants <- NA_to_zero(butterfly_plants)
   
   # alphabetise plant families in plant_locs and in butterfly_plants (so they align correctly)
   butterfly_plants <- butterfly_plants %>%
@@ -161,21 +168,26 @@ if (input == "butterflies" | input == "both") {
 }
 ```
 
+``` {r butt-load-man-strats, purl=FALSE}
+if (input == "butterflies" | input == "both") {
+  
+  # read in farm management strategies
+  butt_man_strats <- read_xlsx("change.xlsx", sheet="butterflies")
+  
+  # replace NAs with 0s
+  butt_man_strats <- NA_to_zero(butt_man_strats)
+}
+```
+
 &nbsp;  
 
 #### For bees:  
 ``` {r bee-read-in-data, message=FALSE}
 if (input == "bees" | input == "both") {
 
-  # farm management strategies
-  bee_man_strats <- read_xlsx("change.xlsx", 1, skip=1) 
-  bee_man_strats <- bee_man_strats[1:6,] # select only butler strategies
-  
   # bee requirements matrix data
   bee <- read_xlsx("Pollinator_requirements.xlsx") 
-  # bumblebee <- bumblebee %>%
-  #   filter(grepl("Bombus", species)) # select only bumblebee species
-  
+
   # bee forage plants
   bee_plants <- bee %>%
     select(species, plants_start:plants_end)
@@ -184,17 +196,11 @@ if (input == "bees" | input == "both") {
   bee_plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
   
   # replace NAs with 0s in all datasets
-  bee_man_strats <- bee_man_strats %>% 
-    mutate_all(~replace(., is.na(.), 0))
+  bee <- NA_to_zero(bee)
   
-  bee <- bee %>% 
-    mutate_all(~replace(., is.na(.), 0))
+  bee_plant_locs <- NA_to_zero(bee_plant_locs)
   
-  bee_plant_locs <- bee_plant_locs %>% 
-    mutate_all(~replace(., is.na(.), 0))
-  
-  bee_plants <- bee_plants %>% 
-    mutate_all(~replace(., is.na(.), 0))
+  bee_plants <- NA_to_zero(bee_plants)
 
   # alphabetise plant families in plant_locs and in bee_plants (so they align correctly)
   bee_plants <- bee_plants %>%
@@ -204,6 +210,18 @@ if (input == "bees" | input == "both") {
 
   bee_plant_locs <- bee_plant_locs[order(bee_plant_locs$plantfamily),]
 }  
+```
+
+``` {r bee-load-man-strats, purl=FALSE}
+if (input == "bees" | input == "both") {
+  
+  # farm management strategies
+  bee_man_strats <- read_xlsx("change.xlsx", sheet="bees", skip=1) 
+  bee_man_strats <- bee_man_strats[1:6,] # select only butler strategies
+  
+  # replace NAs with 0s
+  bee_man_strats <- NA_to_zero(bee_man_strats)
+}
 ```
 
 &nbsp;  
@@ -246,23 +264,16 @@ if (input == "bees" | input == "both") {
   # subset bee forage plants to not include those that aren't relevant (e.g. not on farmland, not present in UK)
   bee_plants <- bee_plants %>%
     select(-all_of(not_farm_plants))
-}
-```
-
-## 2.4. Create function to check column alignment
-It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
-
-``` {r check-alignment}
-check_aligned <- function(data1, data2) {
-    
-  aligned <- identical(colnames(data1), colnames(data2))
   
-  if (aligned == F) {
-    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
-  }
+  # remove all variables used as they are no longer needed
+  rm(bee_plant_fams)
+  rm(i)
+  rm(not_bee_plants)
+  rm(not_farm_plants)
+  rm(plant)
+  rm(plant_fams)
 }
 ```
-
 
 ## 3. Calculate $P_t$ 
 For butterflies, this is $P_{ta}$ for adults, and $P_{tl}$ for larvae. The same is true for all parameters calculated.
@@ -276,7 +287,7 @@ $H$ is calculated by summing up the habitat component columns of the species' re
 $G$ is calculated via row (i.e. per species) sums of the generations columns of the requirements dataset. These columns convey the number of generations of the species per year and the activity periods (early, mid or late) in which they lie.  
 
 ``` {r calc-G-H}
-calculate_G_H <- function(data) {
+calc_bee_butt_G_H <- function(data) {
   
   # create output dataframe
   output <- data.frame(H = rep(NA, nrow(data)),
@@ -310,7 +321,7 @@ In order to calculate $G_t$ , firstly the number of generations in each activity
 Note that in the calculation of $G_t$, the overlaps of the two crop habitats, cropped arable (CA) and cropped grassland (CG) are combined (using the 'or' function) before the final sum is calculated.  
 
 ``` {r calc-Gt}
-calculate_Gt <- function(data, strat) {
+calc_bee_butt_Gt <- function(data, strat) {
   
   # select activity period cols of management change data
   activity_effects <- strat %>%
@@ -346,7 +357,7 @@ calculate_Gt <- function(data, strat) {
   
   # Check columns of diets_habs and strat are the same (if not aligned, overlap calculation will not be correct)
   # check requirements and change data columns are aligned (i.e. the same)
-  check_aligned(activity, activity_effects)
+  check_aligned(colnames(activity), colnames(activity_effects))
   
   # find overlap between activity periods used and activity periods affected by the management strategy
   overlap <- as.data.frame(t(apply(activity, 1, function(row) row & activity_effects)))
@@ -381,13 +392,13 @@ calculate_Gt <- function(data, strat) {
 
 This function calls the relevant functions defined above in order to calculate $P_t$ for all species for a particular management strategy.  
 ``` {r calc-Pt}
-calculate_Pt <- function(data, strat) {
+calc_bee_butt_Pt <- function(data, strat) {
   
-  G_H <- calculate_G_H(data)
+  G_H <- calc_bee_butt_G_H(data)
   G <- G_H$G
   H <- G_H$H
   
-  Gt <- calculate_Gt(data, strat)
+  Gt <- calc_bee_butt_Gt(data, strat)
   
   # CALCULATE Pt
   Pt = Gt / (G * H)
@@ -409,7 +420,7 @@ calculate_Pt <- function(data, strat) {
 if (input == "bees") {
   all_species <- bee$species
   dat <- data.frame(species = all_species,
-                    Pt = calculate_Pt(bee, bee_man_strats[4,]))
+                    Pt = calc_bee_butt_Pt(bee, bee_man_strats[4,]))
   dat
   
   bombus <- dat %>%
@@ -441,7 +452,7 @@ There are a couple of extra conditions in the calculation of $A$. Firstly, simil
 * Butterfly larvae (caterpillars) have much more specific plant forage families, as do the bee species.  
 
 ``` {r calc-F-A}
-calculate_A_F <- function(data, plants, plant_locs, strat) {
+calc_bee_butt_A_F <- function(data, plants, plant_locs, strat) {
   
   # pull plant names from plant locations and species' forage plants, to check they are the same
   plant_locs_names <- plant_locs %>% pull(plantfamily)
@@ -477,7 +488,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
     select(hab_start:hab_end, damp_start:damp_end)
   
   # check species requirements ("habs") and change data ("hab_effects") columns are aligned (i.e. the same)
-  check_aligned(habs, hab_effects)
+  check_aligned(colnames(habs), colnames(hab_effects))
   
   # find overlap between species habitat use and effects on habitat
   overlap <- as.data.frame(t(apply(habs, 1, function(row) row & hab_effects)))
@@ -612,7 +623,7 @@ calculate_A_F <- function(data, plants, plant_locs, strat) {
 if (input == "bees") {
 
   dat <- data.frame(species = all_species,  
-                    calculate_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[6,]))
+                    calc_bee_butt_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[6,]))
   dat
 
 }
@@ -625,9 +636,9 @@ if (input == "bees") {
 
 This function calls the relevant functions defined above, in order to calculate $F_t$ for all species for a particular management change.  
 ``` {r calc-Ft}
-calculate_Ft <- function(data, plants, plant_locs, strat) {
+calc_bee_butt_Ft <- function(data, plants, plant_locs, strat) {
   
-  A_F <- calculate_A_F(data, plants, plant_locs, strat)
+  A_F <- calc_bee_butt_A_F(data, plants, plant_locs, strat)
   A <- A_F$A
   F <- A_F$F
   
@@ -650,7 +661,7 @@ calculate_Ft <- function(data, plants, plant_locs, strat) {
 ``` {r tet-ft, purl=FALSE}
 if (input == "bees") {
   out <- data.frame(species = all_species,
-                  Ft = calculate_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
+                  Ft = calc_bee_butt_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
 
 bombus <- out %>%
   filter(grepl("Bombus", species))
@@ -674,7 +685,7 @@ $H_n$ = number of habitats used where nest sites are likely to occur
 For calculation of $N$ and $H_n$, rather than calculating them separately, $N * H_n$ (the denominator of $N_t$) is calculated. This is due to how the data is structured - the possible nest sites are recorded per the habitats they are present in, so a simple row sum of the nesting data gives $N * H_n$, which is the number of nest sites used, summed across all the habitats used where the nest sites occur.  
 
 ``` {r calc-N-Hn}
-calculate_N_Hn <- function(data) {
+calc_bee_N_Hn <- function(data) {
   
   # calculate H times N
   N_times_Hn <- data %>%
@@ -691,7 +702,7 @@ calculate_N_Hn <- function(data) {
 $B$ is the overlap between effects on and species' use of nest sites, which is calculated using the '&' operator: returning true only if the species uses the nest site and its affected by the management change. This is applied row-wise (i.e. per species) to the species requirements data, and then summed row-wise to give the total overlap per species, $B$.  
 
 ``` {r calc-b}
-calculate_B <- function(data, strat) {
+calc_bee_B <- function(data, strat) {
   
   # extract nesting data from species' requirements and change data
   nesting <- data %>% 
@@ -703,7 +714,7 @@ calculate_B <- function(data, strat) {
     select(-c(nest_start, nest_end))
   
   # check requirements and change data columns are aligned (i.e. the same)
-  check_aligned(nesting, nesting_effects)
+  check_aligned(colnames(nesting), colnames(nesting_effects))
   
   # calculate overlap between nesting requirements and effects
   overlap <- as.data.frame(t(apply(nesting, 1, function(row) row & nesting_effects)))
@@ -721,11 +732,11 @@ $$N_t = \frac{B}{N * H_n}$$
 This function calculates $N_t$, using the relevant equations defined above, for all species for a specific management change.  
 
 ``` {r calc-Nt}
-calculate_Nt <- function(data, strat) {
+calc_bee_Nt <- function(data, strat) {
   
-  N_times_Hn <- calculate_N_Hn(data)
+  N_times_Hn <- calc_bee_N_Hn(data)
 
-  B <- calculate_B(data, strat)
+  B <- calc_bee_B(data, strat)
 
   # CALCULATE Nt
   Nt <- B / N_times_Hn
@@ -819,11 +830,11 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
     larval_plants <- plants_data[[2]]
     
     # CALCULATE PT AND FT for both adults and larvae
-    Pta <- calculate_Pt(adult_data, strategies[strat,])
-    Ptl <- calculate_Pt(larval_data, strategies[strat,])
+    Pta <- calc_bee_butt_Pt(adult_data, strategies[strat,])
+    Ptl <- calc_bee_butt_Pt(larval_data, strategies[strat,])
     
-    Fta <- calculate_Ft(adult_data, adult_plants, plant_locs, strategies[strat,])
-    Ftl <- calculate_Ft(larval_data, larval_plants, plant_locs, strategies[strat,])
+    Fta <- calc_bee_butt_Ft(adult_data, adult_plants, plant_locs, strategies[strat,])
+    Ftl <- calc_bee_butt_Ft(larval_data, larval_plants, plant_locs, strategies[strat,])
     
     # CALCULATE RISK SCORE
     riskscores[,strat+1] <- ((Pta + Fta) / Ra) + ((Ptl + Ftl) / Rl)
@@ -840,6 +851,34 @@ calc_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
 ```
 
 &nbsp;  
+
+#### Function to calculate standardised risk scores
+
+In order to allow cross-taxonomic comparison of risk scores, they must be standardised. This is done by dividing the risk scores by the number of key resource requirements in the framework. This is equivalent to the number of overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. For butterflies, this number is 4, as there are 4 such parameters (2 for adults and 2 for larvae): $G_{ta}$, $G_{tl}$, $A_a$ and $A_l$. See equations in Section 1 for more details.  
+
+If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_butterfly_riskscore()``` function can be used instead.  
+
+``` {r calc-standardised-riskscore}
+calc_std_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
+  
+  # set number of resource requirements used by the taxa
+  num_resource_reqs <- 3
+  
+  # calculate non-standardised risk scores
+  risk_scores <- calc_butterfly_riskscore(data, plants, plant_locs, strategies)
+  
+  # divide all risk scores by number of resource requirements (minus the species name column)
+  std_risk_scores <- risk_scores[,-1] / num_resource_reqs
+  std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
+  names(std_risk_scores)[1] <- "species"
+  
+  return(std_risk_scores)
+}
+
+std <- calc_std_butterfly_riskscore(butterfly, butterfly_plants, butt_plant_locs, butt_man_strats)
+```
+
+&nbsp;
 
 #### Calculate risk scores
 Test scores against Butler's risk scores to ensure method is correct.
@@ -921,9 +960,9 @@ calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
   for (strat in 1:nrow(strategies)) {
     
     # CALCULATE PT, FT AND NT
-    Pt <- calculate_Pt(data, strategies[strat,])
-    Ft <- calculate_Ft(data, plants, plant_locs, strategies[strat,])
-    Nt <- calculate_Nt(data, strategies[strat,])
+    Pt <- calc_bee_butt_Pt(data, strategies[strat,])
+    Ft <- calc_bee_butt_Ft(data, plants, plant_locs, strategies[strat,])
+    Nt <- calc_bee_Nt(data, strategies[strat,])
 
     # CALCULATE RISK SCORE
     riskscores[,strat+1] <- (Pt + Ft + Nt) / R
@@ -940,23 +979,40 @@ calc_bee_riskscore <- function(data, plants, plant_locs, strategies) {
 
 &nbsp;  
 
-``` {r test-sums, purl=FALSE}
-if (input == "bees") {
-  out <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
-  out
-  # bombus_out <- out %>%
-  #   filter(grepl("Bombus", species))
-  # bombus_out
-}
+#### Function to calculate standardised risk scores
 
+Like for butterflies, in order to allow cross-taxonomic comparison of risk scores, they must be standardised. This is done by dividing the risk scores by the number of key resource requirements in the framework. This is equivalent to the number of overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. For bees, this number is 3, as there are 3 such parameters: $G_t$, $A$ and $B$. See equations in Section 1 for more details.  
+
+If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_bee_riskscore()``` function can be used instead.  
+
+``` {r calc-standardised-riskscore}
+calc_std_bee_riskscore <- function(data, plants, plant_locs, strategies) {
+  
+  # set number of resource requirements used by the taxa
+  num_resource_reqs <- 3
+  
+  # calculate non-standardised risk scores
+  risk_scores <- calc_bee_riskscore(data, plants, plant_locs, strategies)
+  
+  # divide all risk scores by number of resource requirements (minus the species name column)
+  std_risk_scores <- risk_scores[,-1] / num_resource_reqs
+  std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
+  names(std_risk_scores)[1] <- "species"
+  
+  return(std_risk_scores)
+}
 ```
+
+
+
+&nbsp; 
 
 #### Calculate risk scores
 ``` {r bee-run-risk, purl=FALSE}
 if (input == "bees" | input == "both") {
   
   bee_risk <- calc_bee_riskscore(bee, bee_plants, bee_plant_locs, bee_man_strats)
-  
+
   # bombus <- bee_risk %>%
   #   filter(grepl("Bombus", species))
   # bombus

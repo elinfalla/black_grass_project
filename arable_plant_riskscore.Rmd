@@ -87,8 +87,20 @@ library(tidyverse) # for data manipulation
 
 ```
 
+## 2.2. Load necessary functions
 
-### 2.2. Read in required datasets  
+```riskscore_functions.R``` contains functions used by all risk score scripts. It contains:  
+
+* **check_aligned()** - It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. This function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+* **NA_to_zero()** - Replaces all NAs in a dataset with zeros.  
+
+``` {r check-alignment}
+source("riskscore_functions.R")
+```
+
+
+### 2.3. Read in required datasets  
 
 Two input files are required to calculate broadleaf arable plant risk scores:  
 
@@ -98,36 +110,24 @@ Two input files are required to calculate broadleaf arable plant risk scores:
 
 The files are read in and then all NA values are set to 0.  
 
+Note that the farm management strategies are read in a separate chunk with ```purl = FALSE``` so if the file is sourced, a user can load their own management strategy dataset. It must however, follow the same format as the plant_man_strats dataset.  
+
 ``` {r read-in-data}
-
-# farm management strategies
-man_strats <- read_xlsx("change.xlsx", 7, skip = 1)
-
-# mammal matrix data
+# plant requirements data
 plants <- read_xlsx("Arable_plant_requirements.xlsx", skip = 1) 
 
-
-# replace NAs with 0s in both datasets
-man_strats <- man_strats %>% 
-  mutate_all(~replace(., is.na(.), 0))
-
-plants <- plants %>% 
-  mutate_all(~replace(., is.na(.), 0))
+# replace NAs with 0s 
+plants <- NA_to_zero(plants)
 
 ```
 
-### 2.3. Create function to check column alignment
-It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+``` {r load-man-strats, purl=FALSE}
+# farm management strategies
+plant_man_strats <- read_xlsx("change.xlsx", sheet="plants", skip = 1)
 
-``` {r check-alignment}
-check_aligned <- function(data1, data2) {
-    
-  aligned <- identical(colnames(data1), colnames(data2))
-  
-  if (aligned == F) {
-    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
-  }
-}
+# replace NAs with 0s 
+plant_man_strats <- NA_to_zero(plant_man_strats) 
+
 ```
 
 ## 3. Calculate $G_t$
@@ -143,7 +143,7 @@ The calculation of $A$ uses a straightforward overlap between the management cha
 
  
 ``` {r calc-Gt}
-calculate_H_G_A <- function(data, strat) {
+calc_plant_H_G_A <- function(data, strat) {
   
   # extract germination cols of species requirements and management strats
   germination <- data %>%
@@ -159,7 +159,7 @@ calculate_H_G_A <- function(data, strat) {
     rowSums(.)
 
   # check requirements and change data columns are aligned (i.e. the same)
-  check_aligned(germination, germination_effects)
+  check_aligned(colnames(germination), colnames(germination_effects))
   
   # calculate overlap between germination requirements and effects
   overlap <- t(apply(germination, 1, function(row) row & germination_effects))  
@@ -174,12 +174,12 @@ calculate_H_G_A <- function(data, strat) {
 
 ### 3.2. Calculate $G_t$  
 
-This function calls ```calculate_H_G_A()``` then uses the output to calculate $G_t$ for each species.  
+This function calls ```calc_plant_H_G_A()``` then uses the output to calculate $G_t$ for each species.  
 
 ``` {r calc-A}
-calculate_Gt <- function(data, strat) {
+calc_plant_Gt <- function(data, strat) {
   
-  H_G_A <- calculate_H_G_A(data, strat)
+  H_G_A <- calc_plant_H_G_A(data, strat)
   A <- H_G_A$A
   H_times_G <- H_G_A$H_times_G
   
@@ -212,7 +212,7 @@ Here, similar to in the calculation of $G_t$, I calculate $H * F$ (denominator o
 $B$ is also calculated in the same way as $A$ is in the calculation of $G_t$, but using the flowering data from species' requirements and farm management datasets, rather than germination data - see explanation of $A$ above.  
 
 ``` {r calc-F-H_B}
-calculate_H_F_B <- function(data, strat) {
+calc_plant_H_F_B <- function(data, strat) {
   
   # extract flowering data from species requirements and management strat
   flowering <- data %>%
@@ -228,7 +228,7 @@ calculate_H_F_B <- function(data, strat) {
     rowSums(.)
   
   # check requirements and change data columns are aligned (i.e. the same)
-  check_aligned(flowering, flowering_effects)
+  check_aligned(colnames(flowering), colnames(flowering_effects))
   
   # calculate overlap between flowering requirements and change effects
   overlap <- t(apply(flowering, 1, function(row) row & flowering_effects))  
@@ -241,18 +241,18 @@ calculate_H_F_B <- function(data, strat) {
 
 ```
 
-``` {r test-F-H-B}
-calculate_H_F_B(plants, man_strats[1,])
+``` {r test-F-H-B, purl=FALSE}
+calc_plant_H_F_B(plants, plant_man_strats[1,])
 ```
 
 ### 4.2. Calculate $F_t$
 
-This function calculates $F_t$ for each species by calling ```calculate_H_F_B()```.  
+This function calc_plants $F_t$ for each species by calling ```calc_plant_H_F_B()```.  
 
 ``` {r calc-Ft}
-calculate_Ft <- function(data, strat) {
+calc_plant_Ft <- function(data, strat) {
   
-  H_F_B <- calculate_H_F_B(data, strat)
+  H_F_B <- calc_plant_H_F_B(data, strat)
   B <- H_F_B$B
   F_times_H <- H_F_B$F_times_H
   
@@ -272,7 +272,7 @@ calculate_Ft <- function(data, strat) {
 ```
 
 
-## Calculate $N_t$ and $M_t$
+## 5. Calculate $N_t$ and $M_t$
 
 $$N_t = \frac{C * (10 - E) + 1}{10}$$
 $N_t$ is the risk score associated with increased fertiliser application.  
@@ -288,7 +288,7 @@ For the calculation of $N_t$ and $M_t$, $C$ and $D$ are their respective overlap
 In the calculation of $N_t$, $$\frac{(10 - E + 1)}{10}$$ is the base calculation of the potential impact of increased nitrogen on a particular species, based on its Ellenberg nitrogen score ($E$). For $M_t$, the same is true for $$\frac{M}{10}$$. Whether this potential impact is seen depends on the respective overlap parameter ($C$ and $D$). For $M_t$, the risk is calculated per habitat (hence the division by $H$) and summed, leading to a maximum risk of $$\frac{M}{10}$$ if all habitats are affected. For $N_t$ however, this is not the case; the potential total risk is 3 times $$\frac{(10 - E + 1)}{10}$$ (as there are 3 habitats), which would correspond to a $C$ value of 3, indicating all habitats are affected. The reason for this difference is that it is very unlikely that increased nitrogen via fertiliser application will be relevant to habitats other than the cropped area, whereas the effect of reduced moisture is more likely to be seen across multiple habitats, making a per-habitat calculation necessary.    
 
 ``` {r calc-Nt-Mt}
-calculate_Nt_Mt <- function(data, strat) {
+calc_plant_Nt_Mt <- function(data, strat) {
   
   # select nitrogen affinity cols from plant requirements and man_strats
   nitrogen <- data %>%
@@ -322,8 +322,8 @@ calculate_Nt_Mt <- function(data, strat) {
     rowSums(.)
 
   # check column alignment for nitrogen and moisture data
-  check_aligned(nitrogen, nitrogen_effects)
-  check_aligned(moisture, moisture_effects)
+  check_aligned(colnames(nitrogen), colnames(nitrogen_effects))
+  check_aligned(colnames(moisture), colnames(moisture_effects))
   
   # calculate C and D: overlaps between requirements and management strat for moisture and nitrogen
   C_temp <- t(apply(nitrogen, 1, function(row) row & nitrogen_effects)) 
@@ -341,13 +341,13 @@ calculate_Nt_Mt <- function(data, strat) {
 ```
 
 ``` {r test-Nt_mtm, purl=FALSE}
-plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
-
-dat <- data.frame(species = all_species,
-                  Nt = calculate_Nt_Mt(plants, man_strats[4,]))
-dat[dat$Nt != 0,]
-dat[80,]
-calculate_Nt_Mt(plants, man_strats[2,])
+# plant_validation <- read_xls("Butler_validation/Validation of weed matrix.xls", 3)
+# 
+# dat <- data.frame(species = all_species,
+#                   Nt = calc_plant_Nt_Mt(plants, plant_man_strats[4,]))
+# dat[dat$Nt != 0,]
+# dat[80,]
+# calc_plant_Nt_Mt(plants, plant_man_strats[2,])
 
 
 
@@ -365,9 +365,9 @@ calculate_Nt_Mt(plants, man_strats[2,])
 ```
 
 
-## Calculate risk scores
+## 6. Calculate risk scores
 
-### Make function for autumn sowing condition (one of Butler's management changes)
+### 6.1 Make function for autumn sowing condition (one of Butler's management changes)
 The 'autumn sowing' management change used by Butler causes decline for July flowering crop habitat plants **only if** they are autumn germinating.  
 
 I've therefore created a function that allows the addition of a condition to a parameter after calculating it. In this specific case, implemented in the ```calc_plant_riskscore()``` function below, I'm adding a condition that the species must be autumn germinating to $F_t$ (the effects on flowering).  
@@ -393,6 +393,7 @@ add_condition <- function(data, parameter, condition) {
 
 ```
 
+### 6.2. Calculate risk scores
 
 The below function calls all the functions defined above in order to calculate a final risk score. Note that, for the functions defined up to this point, parameters are calculated for a single management change. The function below can handle multiple management changes, and will output a risk score for each, as well as a total risk score, calculated by summing up the risk scores of all the changes.  
 
@@ -416,14 +417,14 @@ calc_plant_riskscore <- function(data, strategies) {
   # CALCULATE RISK SCORES per strategy and store in risk scores dataframe
   for (strat in 1:nrow(strategies)) {
     
-    Gt <- calculate_Gt(data, strategies[strat,])
-    Ft <- calculate_Ft(data, strategies[strat,])
+    Gt <- calc_plant_Gt(data, strategies[strat,])
+    Ft <- calc_plant_Ft(data, strategies[strat,])
 
-    if (strat_names[strat] == "aut_sow") { # for autumn sowing change
+    if (strat_names[strat] == "aut_sow") { # for autumn sowing Butler change
       Ft <- add_condition(data, Ft, "_Au")  # add the condition that the species germinates in autumn to Ft
     }
     
-    Nt_Mt <- calculate_Nt_Mt(data, strategies[strat,])
+    Nt_Mt <- calc_plant_Nt_Mt(data, strategies[strat,])
     Nt <- Nt_Mt$Nt
     Mt <- Nt_Mt$Mt
     
@@ -441,8 +442,37 @@ calc_plant_riskscore <- function(data, strategies) {
 }
 ```
 
+### 6.3. Calculate standardised risk score
+
+In order to allow cross-taxonomic comparison of risk scores, they must be standardised. This is done by dividing the risk scores by the number of key resource requirements in the framework. This is equivalent to the number of overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. For broadleaf arable plants, this number is 4, as there are 4 such parameters: $A$, $B$, $C$ and $D$. See equations in Section 1 for more details.  
+
+If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_plant_riskscore()``` function can be used instead.  
+
+``` {r calc-standardised-riskscore}
+calc_std_plant_riskscore <- function(data, strategies) {
+  
+  # set number of resource requirements used by the taxa
+  num_resource_reqs <- 4
+  
+  # calculate non-standardised risk scores
+  risk_scores <- calc_plant_riskscore(data, strategies)
+
+  # divide all risk scores by number of resource requirements (minus the species name column)
+  std_risk_scores <- risk_scores[,-1] / num_resource_reqs
+  std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
+  names(std_risk_scores)[1] <- "species"
+  
+  return(std_risk_scores)
+}
+```
+
+
+### 6.4. Test risk scores
+
+Calculate Butler's risk scores to they are the same as his.  
+
 ``` {r test-risk, purl=FALSE}
-risk <- calc_plant_riskscore(plants, man_strats)
+risk <- calc_plant_riskscore(plants, plant_man_strats)
 #risk[which(butler$same == F),]
 #butler[which(butler$same == F),]
 

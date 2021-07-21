@@ -46,7 +46,7 @@ $C2$ = number of points of coincidence between potential impact on and the speci
 
 ## 2. Set-up
 ### 2.1. Load packages
-```{r load-packages, message=FALSE}
+```{r load-packages, message=FALSE, purl=FALSE}
 
 rm(list = ls()) # clear env
 library(readxl) # for reading in Excel sheets
@@ -54,48 +54,46 @@ library(tidyverse) # for data manipulation
 
 ```
 
+## 2.2. Load necessary functions
 
-### 2.2 Read in required datasets  
+```riskscore_functions.R``` contains functions used by all risk score scripts. It contains:  
+
+* **check_aligned()** - It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. This function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+
+* **NA_to_zero()** - Replaces all NAs in a dataset with zeros.  
+
+``` {r check-alignment}
+source("riskscore_functions.R")
+```
+
+### 2.3. Read in required datasets  
 Two input files are required to calculate mammal risk scores:  
 
 * Species' requirements (variable name = "mammals") - requirements for survival per species, entered as binary data 
 
-* Farm management changes (variable name = "man_strats") - binary data on how the farm management strategies affect the species' resources  
+* Farm management changes (variable name = "mamm_man_strats") - binary data on how the farm management strategies affect the species' resources  
 
-The files are read in and then all NA values are set to 0.
+The files are read in and then all NA values are set to 0.  
+
+Note that the farm management strategies are read in a separate chunk with ```purl = FALSE``` so if the file is sourced, a user can load their own management strategy dataset. It must however, follow the same format as the mamm_man_strats dataset.  
 
 ``` {r read-in-data}
-
-# farm management strategies
-man_strats <- read_xlsx("change.xlsx", 3) 
-man_strats <- man_strats[1:6,]  # just include strategies of interest (Butler strategies)
-
 # mammal requirements data
 mammals <- read_xlsx("Mammal_requirements.xlsx", skip = 2) 
 
-
-# replace NAs with 0s in both datasets
-man_strats <- man_strats %>% 
-  mutate_all(~replace(., is.na(.), 0))
-
-mammals[is.na(mammals)] <- 0
+# replace NAs with 0s
+mammals <- NA_to_zero(mammals)
 ```
 
-## 2.3. Create function to check column alignment
-It is essential to the method used here to ensure that the columns of the management change dataset and species' requirements dataset align before calculating overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. The below function checks this, and outputs a warning if the column names of the two inputted datasets are not identical.  
+``` {r load-man-strats, purl=FALSE}
+# farm management strategies
+mamm_man_strats <- read_xlsx("change.xlsx", sheet="mammals") 
+mamm_man_strats <- mamm_man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
-``` {r check-alignment}
-check_aligned <- function(data1_cols, data2_cols) {
-    
-  aligned <- identical(data1_cols, data2_cols)
-  
-  if (aligned == F) {
-    warning("Columns of management change and species' requirements datasets are not aligned - calculations may not be correct.")
-  }
-}
+# replace NAs with 0s
+mamm_man_strats <- NA_to_zero(mamm_man_strats)
+
 ```
-
-
 ## 3. Calculate $D_t$ 
 
 ### 3.1. Calculate $F$ and $D$  
@@ -107,7 +105,7 @@ $D$ is not technically the number dietary components as aqueous invertebrates on
 $F$ is calculated by summing the foraging habitat components of the data by row (species), to give the total number of habitats used per species.  
 
 ``` {r calc-D}
-calculate_F_D <- function(data) {
+calc_mamm_F_D <- function(data) {
   
   # calculate F
   F <- data %>%
@@ -128,7 +126,7 @@ calculate_F_D <- function(data) {
 ``` {r test-D, purl=FALSE}
 all_species <- mammals$Species
 data.frame(species = all_species,
-           calculate_F_D(mammals))
+           calc_mamm_F_D(mammals))
 ```
 
 ### 3.2. Calculate $A$ and $B$  
@@ -140,7 +138,7 @@ In this function 'strat' is a single row from the management strategies database
 The impact of the change on dietary and foraging habitat components ($A$ and $B$ respectively) is found by applying the '&' operation, which returns true only if both elements are non-zero. The management strategy is applied in this way row-wise to the mammals requirements data, and the row sums gives the total overlap, i.e. $A$ or $B$. This strategy (which is also used to calculate $C1$ and $C2$ later on) assumes that the columns in the two datasets are aligned. There is therefore a check that this is the case, with a warning returned if not.  
 
 ``` {r calc-A}
-calculate_A_B <- function(data, strat) {
+calc_mamm_A_B <- function(data, strat) {
   
   # subset diet and habitat columns from data
   diets_habs <- data %>%
@@ -173,7 +171,7 @@ calculate_A_B <- function(data, strat) {
 ```
 
 ``` {r, purl=FALSE}
-calculate_A_B(mammals, man_strats[1,])
+calc_mamm_A_B(mammals, mamm_man_strats[1,])
 ```
 
 
@@ -184,13 +182,13 @@ $$D_t = \frac{A}{D*F} + \frac{B}{F}$$
 This function calculates $D_t$ by calling the relevant previously-defined functions.  
 
 ``` {r calc-Dt}
-calculate_Dt <- function(data, strat) {
+calc_mamm_Dt <- function(data, strat) {
   
-  A_B <- calculate_A_B(data, strat)
+  A_B <- calc_mamm_A_B(data, strat)
   A <- A_B$A
   B <- A_B$B
   
-   F_D <- calculate_F_D(data)
+   F_D <- calc_mamm_F_D(data)
    F <- F_D$F
    D_times_F <- F_D$D_times_F
 
@@ -211,7 +209,7 @@ calculate_Dt <- function(data, strat) {
 ``` {r, purl=FALSE}
 all_species <- mammals$Species
 out <- data.frame(species = all_species,
-                  Dt = calculate_Dt(mammals, man_strats[2,]))
+                  Dt = calc_mamm_Dt(mammals, mamm_man_strats[2,]))
 out
 ```
 
@@ -222,7 +220,7 @@ $N$ = number of nesting habitat components used by the species
 
 $N$ is calculated by summing the nesting requirement columns for each row (species).  
 ``` {r calc-N}
-calculate_N <- function(data) {
+calc_mamm_N <- function(data) {
 
   N <- data %>%
     select(nest_start : nest_end) %>%
@@ -236,7 +234,7 @@ calculate_N <- function(data) {
 ``` {r test-n, purl=FALSE}
 all_species <- mammals$Species
 data.frame(species = all_species,
-           N = calculate_N(mammals))
+           N = calc_mamm_N(mammals))
 
 ```
 
@@ -247,7 +245,7 @@ $C2$ = number of points of coincidence between potential impact on and the speci
 Like for calculating $A$ and $B$ above, overlaps are calculated using the '&' operator - returns 1 if both values (i.e. the mammal nesting requirement and whether its affected by the management strategy) are non-zero.  
 
 ``` {r calc-C1C2}
-calculate_C1_C2 <- function(data, strat) {
+calc_mamm_C1_C2 <- function(data, strat) {
   
   nesting <- data %>%
     select(nest_start : nest_end,
@@ -290,11 +288,11 @@ calculate_C1_C2 <- function(data, strat) {
 $$N_t = \frac{C1}{N} + \frac{C2}{N}$$
 
 ``` {r calc-Nt}
-calculate_Nt <- function(data, strat) {
+calc_mamm_Nt <- function(data, strat) {
   
-  N <- calculate_N(data)
+  N <- calc_mamm_N(data)
   
-  C1_C2 <- calculate_C1_C2(data, strat)
+  C1_C2 <- calc_mamm_C1_C2(data, strat)
   C1 <- C1_C2$C1
   C2 <- C1_C2$C2
 
@@ -315,7 +313,7 @@ calculate_Nt <- function(data, strat) {
 
 ``` {r test-nt, purl=FALSE}
 out <- data.frame(species = all_species,
-                  Nt = calculate_Nt(mammals, man_strats[1,]))
+                  Nt = calc_mamm_Nt(mammals, mamm_man_strats[1,]))
 out
 ```
 
@@ -344,8 +342,8 @@ calc_mammal_riskscore <- function(data, strategies) {
   # CALCULATE RISK SCORES per strategy and store in riskscores dataframe
   for (strat in 1:nrow(strategies)) {
     
-    Dt <- calculate_Dt(data, strategies[strat,])
-    Nt <- calculate_Nt(data, strategies[strat,])
+    Dt <- calc_mamm_Dt(data, strategies[strat,])
+    Nt <- calc_mamm_Nt(data, strategies[strat,])
     
     # CALCULATE RISK SCORE
     riskscores[,strat+1] <- (Dt + Nt) / R
@@ -360,12 +358,36 @@ calc_mammal_riskscore <- function(data, strategies) {
 }
 ```
 
-### 5.1. Test risk scores are correct
+### 5.1. Calculate standardised risk score
+
+In order to allow cross-taxonomic comparison of risk scores, they must be standardised. This is done by dividing the risk scores by the number of key resource requirements in the framework. This is equivalent to the number of overlap parameters - i.e. parameters that work out the impact of a change on a specific resource for a species. For mammals, this number is 4, as there are 4 such parameters: $A$, $B$, $C1$ and $C2$. See equations in Section 1 for more details.  
+
+If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_mammal_riskscore()``` function can be used instead.  
+
+``` {r calc-standardised-riskscore}
+calc_std_mammal_riskscore <- function(data, strategies) {
+  
+  # set number of resource requirements used by the taxa
+  num_resource_reqs <- 4
+  
+  # calculate non-standardised risk scores
+  risk_scores <- calc_mammal_riskscore(data, strategies)
+
+  # divide all risk scores by number of resource requirements (minus the species name column)
+  std_risk_scores <- risk_scores[,-1] / num_resource_reqs
+  std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
+  names(std_risk_scores)[1] <- "species"
+  
+  return(std_risk_scores)
+}
+```
+
+### 5.2. Test risk scores are correct
 Calculate risk scores for the strategies used in Butler's paper in order to check they are the same.  
 
 ``` {r test-risk, purl=FALSE}
 # Calculate risk scores
-riskscores <- calc_mammal_riskscore(mammals, man_strats)
+riskscores <- calc_mammal_riskscore(mammals, mamm_man_strats)
 
 # Display risk scores
 riskscores
@@ -387,5 +409,12 @@ butler
 print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butler)))
 
 butler$my_risk == butler$butler_risk *-1
+```
+
+
+``` {r test-std-risk}
+std_risk <- calc_std_mammal_riskscore(mammals, mamm_man_strats)
+
+std_risk[,-1] == riskscores[,-1] / 4
 ```
 
