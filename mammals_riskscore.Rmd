@@ -411,10 +411,3 @@ print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butl
 butler$my_risk == butler$butler_risk *-1
 ```
 
-
-``` {r test-std-risk}
-std_risk <- calc_std_mammal_riskscore(mammals, mamm_man_strats)
-
-std_risk[,-1] == riskscores[,-1] / 4
-```
-

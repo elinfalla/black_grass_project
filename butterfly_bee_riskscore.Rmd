@@ -858,11 +858,11 @@ In order to allow cross-taxonomic comparison of risk scores, they must be standa
 
 If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_butterfly_riskscore()``` function can be used instead.  
 
-``` {r calc-standardised-riskscore}
+``` {r calc-standardised-butt-riskscore}
 calc_std_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
   # set number of resource requirements used by the taxa
-  num_resource_reqs <- 3
+  num_resource_reqs <- 4
   
   # calculate non-standardised risk scores
   risk_scores <- calc_butterfly_riskscore(data, plants, plant_locs, strategies)
@@ -874,8 +874,6 @@ calc_std_butterfly_riskscore <- function(data, plants, plant_locs, strategies) {
   
   return(std_risk_scores)
 }
-
-std <- calc_std_butterfly_riskscore(butterfly, butterfly_plants, butt_plant_locs, butt_man_strats)
 ```
 
 &nbsp;
@@ -985,7 +983,7 @@ Like for butterflies, in order to allow cross-taxonomic comparison of risk score
 
 If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_bee_riskscore()``` function can be used instead.  
 
-``` {r calc-standardised-riskscore}
+``` {r calc-standardised-bee-riskscore}
 calc_std_bee_riskscore <- function(data, plants, plant_locs, strategies) {
   
   # set number of resource requirements used by the taxa
@@ -1002,8 +1000,6 @@ calc_std_bee_riskscore <- function(data, plants, plant_locs, strategies) {
   return(std_risk_scores)
 }
 ```
-
-
 
 &nbsp; 
 
