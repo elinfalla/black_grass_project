@@ -364,19 +364,37 @@ In order to allow cross-taxonomic comparison of risk scores, they must be standa
 
 If only comparing risk scores within the taxon, this standardisation step is not required, and the ```calc_mammal_riskscore()``` function can be used instead.  
 
+If one wants to calculate standardised risk scores from scratch (i.e. calculate risk scores then standardise them), the 'data' argument needs to be the species' requirements dataset, and 'strategies' needs to be the management strategies dataset. 'from_scratch' must be set to TRUE, and the 'risk_col' argument can be ignored.  
+
+If one already has a dataset with risk scores in it that need to be standardised, 'data' needs to be said dataset, and 'risk_col' needs to be the name of the column with the risk scores in it. 'from_scratch' is FALSE by default and the 'strategies' argument can be ignored.
+
 ``` {r calc-standardised-riskscore}
-calc_std_mammal_riskscore <- function(data, strategies) {
+calc_std_mammal_riskscore <- function(data, strategies=NA, from_scratch=FALSE, risk_col=NA) {
   
   # set number of resource requirements used by the taxa
   num_resource_reqs <- 4
   
-  # calculate non-standardised risk scores
-  risk_scores <- calc_mammal_riskscore(data, strategies)
+  if (from_scratch == TRUE) {
+    # calculate non-standardised risk scores
+    risk_scores <- calc_mammal_riskscore(data, strategies)
 
   # divide all risk scores by number of resource requirements (minus the species name column)
-  std_risk_scores <- risk_scores[,-1] / num_resource_reqs
-  std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
-  names(std_risk_scores)[1] <- "species"
+    std_risk_scores <- risk_scores[,-1] / num_resource_reqs
+    std_risk_scores <- cbind(risk_scores$species, std_risk_scores) # add back species name column
+    names(std_risk_scores)[1] <- "species"
+    
+  }
+  
+  else {
+    
+    # extract risk score column
+    risk_scores <- data %>%
+      pull(risk_col)
+    
+    # create standard risk column
+    std_risk_scores <- data %>%
+      mutate(Std_risk = (risk_scores / num_resource_reqs))
+  }
   
   return(std_risk_scores)
 }
