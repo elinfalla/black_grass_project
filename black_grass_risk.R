@@ -5,6 +5,7 @@ library(readr)
 library(data.table)
 library(lme4)
 library(lmtest)
+library(colorspace)
 
 knitr::purl("butterfly_bee_riskscore.Rmd")
 source("butterfly_bee_riskscore.R") 
@@ -229,17 +230,18 @@ get_relative_risk <- function(df, risk_col, num_BG_strats) {
   BAU <- df %>%
     filter(Strategy == "BAU")
   
-  rep_BAU <- BAU %>%
-    slice(rep(1:n(), num_BG_strats)) # repeat BAU rows for the number of other strats there are
+  # repeat BAU rows for the number of other strats there are
+  rep_BAU <- do.call("rbind", replicate(num_BG_strats, BAU, simplify = FALSE)) 
 
   BG_strats <- df %>%
     filter(!(Strategy == "BAU"))
 
-  relative_risk <- BG_strats %>% pull(risk_col) - rep_BAU %>% pull(risk_col)
+  # relative risk is the black-grass risk - BAU risk
+  relative_BG_risk <- (BG_strats %>% pull(risk_col)) - (rep_BAU %>% pull(risk_col))
   
-  df$Relative_risk <- c(BAU %>% pull(risk_col), relative_risk)
+  relative_risk_w_BAU <- c(BAU %>% pull(risk_col), relative_BG_risk)
   
-  return(df)
+  return(relative_risk_w_BAU)
   
 }
 
@@ -285,35 +287,22 @@ extract_lmer_means <- function(model, num_levels) {
 }
 
 
-## DATA SUMMARIES
+## 
 
 risk_per_strat <- all_riskscores_df %>%
   group_by(Species, Strategy, Taxon, Num_reqs) %>%
   summarise(Risk_score = sum(Risk_score))
 
-risk_per_year <- all_riskscores_df %>%
-  group_by(Species, Strategy, Taxon, Year) %>%
-  summarise(Risk_score = sum(Risk_score))
 
-risk_per_component <- all_riskscores_df %>%
-  group_by(Strategy, Species, Taxon, Component, Year) %>%
-  summarise(Risk_score = sum(Risk_score))
 
-risk_per_component <- get_relative_risk(risk_per_component, "Risk_score", 3)
 
 ## MODEL FIT
 
-### LOG RISK SCORES
+### log risk scores
 risk_per_strat[,"Risk_score"] <- risk_per_strat[,"Risk_score"] + 0.00000001
 risk_per_strat[,"Risk_score"] <- log(risk_per_strat[,"Risk_score"])
 
-# risk_per_year[,"Risk_score"] <- risk_per_year[,"Risk_score"] + 0.00000001
-# risk_per_year[,"Risk_score"] <- log(risk_per_year[,"Risk_score"])
-
-#risk_per_component[,"Relative_risk"] <- risk_per_component[,"Relative_risk"] + 0.00000001
-#risk_per_component[,"Relative_risk"] <- log(risk_per_component[,"Relative_risk"])
-
-#### taxon effects
+#### forward step-wise selection
 null_model <- lmer(Risk_score ~ 1 + (1|Species), data=risk_per_strat)
 
 model_simple <- lmer(Risk_score ~ Strategy + (1|Species), data=risk_per_strat)
@@ -322,52 +311,13 @@ model_taxon <- lmer(Risk_score ~ Strategy + Taxon + (1|Species), data=risk_per_s
 
 model_tax_int <- lmer(Risk_score ~ Strategy*Taxon + (1|Species), data=risk_per_strat)
 
-
-# taxon effects ANOVA
+# ANOVA
 anova(null_model, model_simple) # *** signif
 anova(model_simple, model_taxon) # *** signif
-anova(model_taxon, model_taxon_int) # *** signif
-
-#### year effects
-
-# # separate year risks into strategies and analyse separately
-# risk_per_yr_HDHR <- risk_per_year[risk_per_year$Strategy == "HDHR-N-h",]
-# risk_per_yr_LDHR <- risk_per_year[risk_per_year$Strategy == "LDHR-N-h",]
-# risk_per_yr_LDLR <- risk_per_year[risk_per_year$Strategy == "LDLR-N-h",]
-# 
-# model_yr_null <- lmer(Risk_score ~ 1 + (1|Species), data=risk_per_yr_HDHR)
-# 
-# model_yr_simple <- lmer(Risk_score ~ as.factor(Year) + (1|Species), data=risk_per_yr_HDHR)
-# 
-# model_yr_strat <- lmer(Risk_score ~ Taxon + as.factor(Year) + (1|Species), data=risk_per_yr_HDHR)
-# 
-# model_yr_int <- lmer(Risk_score ~ Taxon*as.factor(Year) + (1|Species), data=risk_per_yr_HDHR)
-# summary(model_yr_int)
-
-# # year effects anova / likelihood ratio test
-# anova(model_yr_null, model_yr_simple) # *** signif
-# anova(model_yr_simple, model_yr_strat) # *** signif
-# anova(model_yr_strat, model_yr_int) # *** signif
+anova(model_taxon, model_tax_int) # *** signif
 
 
-## component effects
-model_comp_null <- lmer(Relative_risk ~ 1 + (1|Species), data=risk_per_component[risk_per_component$Strategy != "BAU",])
-summary(model_comp_null)
-
-model_comp <- lmer(Relative_risk ~ Component + (1|Species), data=risk_per_component[risk_per_component$Strategy != "BAU",])
-summary(model_comp)
-
-model_comp_tax <- lmer(Relative_risk ~ Component + Taxon + (1|Species), data=risk_per_component[risk_per_component$Strategy != "BAU",])
-
-model_comp_tax_int <- lmer(Relative_risk ~ Component*Taxon + (1|Species), data=risk_per_component[risk_per_component$Strategy != "BAU",])
-
-model_comp_HDHR <- lmer(Relative_risk ~ Component*Taxon + (1|Species), data=risk_per_component[risk_per_component$Strategy == "HDHR-N-h",])
-model_comp_LDHR <- lmer(Relative_risk ~ Component*Taxon + (1|Species), data=risk_per_component[risk_per_component$Strategy == "LDHR-N-h",])
-model_comp_LDLR <- lmer(Relative_risk ~ Component*Taxon + (1|Species), data=risk_per_component[risk_per_component$Strategy == "LDLR-N-h",])
-
-####  PLOTTING
-
-### strat*taxon plot
+### prepare data to plot
 
 model_tax_int_df <- extract_lmer_means(model_tax_int, 4) # 4 is num levels in 'strategy' fixed effect
 names(model_tax_int_df) <- c("Mean_risk", "Std_error")
@@ -376,14 +326,17 @@ model_tax_int_df$Strategy <- c("BAU", "HDHR", "LDHR", "LDLR", rep("BAU", 3), rep
 model_tax_int_df$Taxon <- c(rep("Bees", 4), "Broadleaf plants", "Butterflies", "Mammals", rep(c("Broadleaf plants", "Butterflies", "Mammals"), each=3))
 model_tax_int_df$Estimate <- as.vector(fixef(model_tax_int))
 
-# order dataframe alphabetically by strategysu
+# order dataframe alphabetically by strategy
 #model_tax_int_df <- model_tax_int_df[order(model_tax_int_df$Strategy),]
 
 # add in relative risk
 #model_tax_int_df <- get_relative_risk(model_tax_int_df, "Mean_risk", 3)
 
+
 ## plot model
-p <- ggplot(data = model_tax_int_df %>% filter(!(Strategy == "BAU")), 
+pdf("../write_up/Figures/risk_comparison.pdf", width=9, height=6)
+
+ggplot(data = model_tax_int_df %>% filter(!(Strategy == "BAU")), 
             aes(x = Strategy, y = Estimate, ymin = (Estimate - Std_error), ymax = (Estimate + Std_error))) +
   geom_pointrange() +
   ylab("Estimate") +
@@ -391,9 +344,156 @@ p <- ggplot(data = model_tax_int_df %>% filter(!(Strategy == "BAU")),
   facet_wrap(~Taxon) +
   geom_hline(yintercept = 0, lty=2)
 
-p
+dev.off()
 
-### COMPONENTS PLOT
+
+### STANDARDISE RISK SCORES for other analyses ----
+
+# standardise plant risk scores
+all_plant_riskscores_df <- all_riskscores_df %>%
+  filter(Taxon == "Broadleaf plant")
+
+all_std_plant_riskscores <- calc_std_plant_riskscore(all_plant_riskscores_df,
+                                                     risk_col = "Risk_score")
+
+# standardise bee risk scores
+all_bee_riskscores_df <- all_riskscores_df %>%
+  filter(Taxon == "Bee")
+
+all_std_bee_riskscores <- calc_std_bee_riskscore(all_bee_riskscores_df,
+                                                     risk_col = "Risk_score")
+
+# standardise butterfly risk scores
+all_butt_riskscores_df <- all_riskscores_df %>%
+  filter(Taxon == "Butterfly")
+
+all_std_butt_riskscores <- calc_std_butterfly_riskscore(all_butt_riskscores_df,
+                                                        risk_col = "Risk_score")
+
+# standardise mammal risk scores
+all_mamm_riskscores_df <- all_riskscores_df %>%
+  filter(Taxon == "Mammal")
+
+all_std_mamm_riskscores <- calc_std_mammal_riskscore(all_mamm_riskscores_df,
+                                                        risk_col = "Risk_score")
+
+# row bind them into one df again
+all_std_riskscores_df <- dplyr::bind_rows(all_std_plant_riskscores,
+                                          all_std_bee_riskscores,
+                                          all_std_butt_riskscores,
+                                          all_std_mamm_riskscores)
+
+### COMPONENTS PLOT ----
+
+## WHAT QUESTION AM I TRYING TO ANSWER????
+
+risk_per_component <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Component) %>%
+  summarise(Risk_score = mean(Risk_score)) %>% # mean risk score across species
+  group_by(Strategy, Taxon) %>%
+  mutate(Total_strat_risk = sum(Risk_score),
+         Proportion_risk = Risk_score / Total_strat_risk)
+
+risk_per_component$Relative_risk <- get_relative_risk(risk_per_component, "Risk_score", 3)
+
+
+component_colours <- c( 
+          "crop" = "goldenrod2", 
+          "fertiliser" = "navyblue", 
+          "glyphosate" = "dodgerblue",
+          "pesticide" = "blue2",
+          "sowing" = "yellow",
+          "BG herbicide" = "lightskyblue",
+          "tillage" = "gold")
+component_order <- c("BG herbicide", "glyphosate", "pesticide", "fertiliser", "sowing", "tillage", "crop")
+tax_levels <- c("Bee", "Butterfly", "Broadleaf plant", "Mammal")
+
+pdf("../write_up/Figures/components_proportions.pdf", width=8, height=9)
+
+comp_bar <- ggplot(data = risk_per_component, aes(x = Strategy, y = Risk_score, fill = factor(Component, levels = component_order))) +
+  geom_col(position = "fill") +
+  scale_x_discrete(labels = c("BAU", "HDHR", "LDHR", "LDLR")) +
+  facet_wrap(~factor(Taxon, levels=tax_levels), scales="free") +
+  theme_bw() +
+  theme(panel.grid = element_blank(), # remove grid lines
+        strip.background = element_blank(), 
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(size = 10)) + 
+  scale_fill_manual(values = component_colours,
+                    labels = c("BG herbicides", "Glyphosate", "Pesticides", "Fertilisers", "Sowing", "Tillage", "Crop choice")) +
+  labs(fill = "Agricultural\ncomponent", 
+       y = "Mean proportion of standardised risk score\n", 
+       x = "\nFarm management strategy")
+comp_bar
+
+dev.off()
+
+pdf("../write_up/Figures/components_rel_risk.pdf")
+
+rel_comp <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_risk, fill = Strategy)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~factor(Taxon, levels = tax_levels), scales = "free_x") +
+  theme_bw() +
+  theme(panel.grid = element_blank(), # remove grid lines
+        strip.background = element_blank(), 
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        legend.text = element_text(size = 10),
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(size = 10, angle = 400, vjust = 0.9, hjust = 1)) + # rotate tick text
+  geom_vline(xintercept = seq(0.5, length(risk_components), by = 1), color="gray", size=.5, alpha=.5) + # set vertical lines between x groups
+  geom_hline(yintercept = 0, color="gray", size=.5, alpha=.5) +
+  scale_x_discrete(labels = c("BG herbicides", "Crop choice", "Fertilisers", "Glyphosate", "Pesticides", "Sowing", "Tillage")) +
+  scale_fill_discrete_sequential(palette = "ag_Sunset", 
+                                   labels = c("HDHR", "LDHR", "LDLR")) +
+  labs(fill = "Management strategy",
+       x = "\nAgricultural component",
+       y = "Mean relative standardised risk\n")
+rel_comp
+
+dev.off()
+
+# same plot using proportions not raw scores
+# risk_per_component$Relative_prop <- get_relative_risk(risk_per_component, "Proportion_risk", 3)
+# 
+# pdf("../write_up/Figures/components_rel_prop.pdf")
+# 
+# prop_rel_comp <- 
+#   ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_prop, fill = Strategy)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   facet_wrap(~Taxon) +
+#   theme_bw() +
+#   theme(panel.grid = element_blank()) + # remove grid lines
+#   geom_vline(xintercept = seq(0.5, length(risk_components), by = 1), color="gray", size=.5, alpha=.5) + # set vertical lines between x groups
+#   geom_hline(yintercept = 0, color="gray", size=.5, alpha=.5) +
+#   theme(axis.text.x = element_text(angle = 400, vjust = 0.9, hjust = 1)) +
+#   labs(y = "Relative proportion")
+# prop_rel_comp
+#   
+# dev.off()
+  
+  
+  
+  
+# can i do difference in proportions like that? work out proportion for BAU and BG strat and take one away from other?
+
+## could make colours by proportion size rather than component - might have to label the components
+
+# could group by known risk to biodiveristy - all chemicals would come under increased agrochems,
+# could put tillage and sowing together
+# e.g blue means agrochemicals and make them diff shades and stack them together
+
+#proportion of risk due to the different crop categories
+# could split crop bar into crop transition types e.g. flowering->cereal
+
+
+
+### OLD COMPONENTS PLOT ----
 
 # extract risk scores + SE
 components_df <- extract_lmer_means(model_comp_tax_int, 7) # 7 is num levels in 'component' fixed effect
@@ -489,4 +589,178 @@ comp_plot_LDLR
 
 
 
+### YEAR PLOT ----
 
+risk_per_year <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Year) %>%
+  summarise(Risk_score = sum(Risk_score))
+
+pdf("../write_up/Figures/year_bar.pdf")
+
+year_bar <- ggplot(data = risk_per_year, aes(x = Strategy, y = Risk_score, fill = as.factor(Year))) +
+  geom_bar(position = "stack", stat = "identity") +
+  facet_wrap(~Taxon, scales="free")
+year_bar
+## change to mean risk score???? same for components plot???
+
+dev.off()
+
+### CROP AND FARMLAND RELIANCE PLOTS ----
+
+# number of species using cropped (/arable) area as a habitat for each taxon
+
+# work out number of bee species using cropped arable as either nesting or foraging habitat
+bee_CA_hab_only <- bee %>%
+  select(CA_hab, `CA_N_Bare ground on banks, paths and tracks`)
+
+total_bee_CA_hab <- apply(bee_CA_hab_only, 1, function(row) row[1] | row[2])
+
+# work out number of mammal species using cropped area as either nesting or feeding habitat
+mamm_CA_hab_only <- mammals %>%
+  select(C_hab, C_N_AG, C_N_BG)
+
+total_mamm_CA_hab <- apply(mamm_CA_hab_only, 1, function(row) row[1] | row[2] | row[3])
+
+# work out proportion of species reliant on cropped area for each taxon
+bee_arable_reliance <- sum(total_bee_CA_hab) / nrow(bee)
+butt_ad_arable_reliance <- sum(butterfly$Ad_CA_hab) / nrow(butterfly)
+butt_lar_arable_reliance <- sum(butterfly$L_CA_hab) / nrow(butterfly)
+mamm_crop_reliance <- sum(total_mamm_CA_hab) / nrow(mammals)
+plant_crop_reliance <- sum(plants$C_hab) / nrow(plants)
+
+crop_reliance_df <- data.frame(Taxon = c("Bee", "Butterfly adult", "Butterfly larvae",
+                                         "Mammal", "Broadleaf plant"),
+                               Crop_reliance = c(bee_arable_reliance,
+                                                 butt_ad_arable_reliance,
+                                                 butt_lar_arable_reliance,
+                                                 mamm_crop_reliance,
+                                                 plant_crop_reliance))
+
+pdf("../write_up/Figures/crop_reliance.pdf")
+
+crop_rel_bar <- ggplot(data = crop_reliance_df, aes(x = Taxon, y = Crop_reliance, fill=Taxon)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("yellow2", "darkgreen", "red", "red", "blue")) +
+  theme_bw() +
+  theme(legend.position = "none",
+        axis.title = element_text(size = 13),
+        axis.text = element_text(size = 11)) +
+  scale_y_continuous(limits = c(0,1)) +
+  labs(x = "\nTaxonomic group",
+       y = "Proportion reliant on crop habitat\n") +
+  scale_x_discrete(labels = c("Bee", "Broadleaf plant", "Butterfly (adult)", "Butterfly (larva)", "Mammal"))
+  
+crop_rel_bar
+# get icons above each bar showing which taxa they are
+
+dev.off()
+
+# mean farmland reliance score
+bee_farm_reliance <- sum(bee$Reliance) / nrow(bee)
+butt_ad_farm_reliance <- sum(butterfly$Ad_reliance) / nrow(butterfly)
+butt_lar_farm_reliance <- sum(butterfly$L_reliance) / nrow(butterfly)
+mamm_farm_reliance <- sum(mammals$Reliance) / nrow(mammals)
+plant_farm_reliance <- sum(plants$Reliance) / nrow(plants)
+
+farm_reliance_df <- data.frame(Taxon = c("Bee", "Butterfly adult", "Butterfly larvae",
+                                         "Mammal", "Broadleaf plant"),
+                               Farm_reliance = c(bee_farm_reliance,
+                                                 butt_ad_farm_reliance,
+                                                 butt_lar_farm_reliance,
+                                                 mamm_farm_reliance,
+                                                 plant_farm_reliance))
+
+farm_bar <- ggplot(data = farm_reliance_df, aes(x = Taxon, y = Farm_reliance, fill = Taxon)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("yellow2", "darkgreen", "red", "red", "blue")) +
+  theme(legend.position = "none")
+farm_bar  # don't need a graph, could just show this in a table, or in the text
+
+
+## bees have lower reliance on farmland, but what about those that rely on cropped areas?
+## could do plot of mean farm reliance for those reliant on cropped area - may not be useful
+
+
+### CROP TYPES PLOT ----
+
+# extract vector of crop transitions per year per strategy per taxon
+crop_transitions <- all_std_riskscores_df %>%
+  group_by(Taxon, Strategy, Year, Component, Component_transition) %>%
+  summarise(Risk_score = sum(Risk_score)) %>%
+  filter(Component == "crop") %>%
+  mutate(Component_transition = gsub("wheat -> 18 month fallow", "wheat -> fallow", Component_transition),
+         Component_transition = gsub("oil seed rape", "osr", Component_transition),
+         Component_transition = gsub(".1", " (2)", Component_transition),
+         Component_transition = gsub("wheat -> beans", "wheat -> bean", Component_transition)
+         ) %>%
+  pull(Component_transition)
+
+risk_per_crop <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Year) %>% # needs to be ordered by strategy for relative risk score
+  summarise(Risk_score = mean(Risk_score)) %>% # find mean risk per taxon, strat, year
+  ungroup()
+
+risk_per_crop$Relative_risk = get_relative_risk(risk_per_crop, "Risk_score", 3)
+
+risk_per_crop <- risk_per_crop %>%
+  arrange(Taxon) %>% # need ordered by taxon to add crop transitions
+  add_column(Crop_transition = crop_transitions) %>%
+  filter(!(Strategy == "BAU")) #%>% # remove BAU as interested in BG relative riskscores
+  #group_by(Taxon, Crop_transition) #%>%
+  #summarise(Mean_rel_risk = mean(Relative_risk)) #%>% # MEAN ACROSS BG STRATS ONLY
+  #filter(!(grepl("no change", Crop_transition)))# change of 0, not interesting
+  
+
+risk_per_crop <- risk_per_crop %>% arrange(Strategy)
+
+pdf("../write_up/Figures/crop_year_bar.pdf", width = 8, height = 10)
+
+crop_bar <- ggplot(data = risk_per_crop, aes(x = Crop_transition, y = Relative_risk)) +
+  facet_grid(Taxon ~ Strategy, scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 10, angle = 400, vjust = 0.9, hjust = 1),
+        panel.grid = element_blank(),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        #strip.text.x = c("HDHR", "LDHR", "LDLR"),  #doesn't work
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        axis.title = element_text(size = 13)) +
+  geom_hline(yintercept = seq(-0.2, 0.1, by = 0.025), 
+             color="grey", 
+             size=.5, 
+             alpha=.5) +
+  geom_hline(yintercept = 0, color = "grey") +
+  geom_bar(position = "stack", stat = "identity") +
+  labs(x = "\nTransition",
+       y = "Relative standardised risk\n") #+
+  #scale_x_discrete(limits = risk_per_crop$Crop_transition)
+
+crop_bar
+
+dev.off()
+## categorise based on type of conversion? eg. cereal -> flowering, grass -> arable
+      ## PROBABLY CLEARER TO GROUP BY TYPE ON X AXIS, CAN ALSO COLOUR
+## include 'no change' ones??? they do often still convey risk
+## CHANGE PLOT SO IS A COMPARISON BETWEEN BAU AND BG STRATS?? E.G. WHEAT-> BARLEY FOR BAU COMPARED TO FOR BG STRSATS?
+## OR JUST NOT INCLUDE BAU?? esp if doing relative risk score
+
+## LDHR - wheat -> barley, plants affected disproportionately. they are affected more by weed suppression
+# as it affects all species not just those using them as a resource like for other taxa.
+# same for osr-> wheat and osr->barley, may be why hdhr not significant
+
+# LDHR = wheat->wheat, wheat->barley, osr->bean, x2
+## COULD POTENTIALLY DO A MODEL TO SEE CONTRIBUTION OF CROP TRANSITIONS TO RISK SCORE?
+# risk ~ crop_transition_type
+
+crop_transitions_df <- data.frame(Crop_transition = crop_transitions[1:(num_yrs*length(strategy_names))])
+crop_count <- crop_transitions_df %>% 
+  count(Crop_transition)
+
+crop_count_bar <- ggplot(data = crop_count, aes(x = Crop_transition, y = n)) +
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 400, vjust = 0.9, hjust = 1))
+crop_count_bar # probably not necessary to show
+
+
+  
