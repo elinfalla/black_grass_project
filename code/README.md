@@ -1,7 +1,7 @@
 ## Code
 
 ### Description
-This repository contains all code for translating Butler's risk index into R, calculating risk of the black-grass strategies, and analysis and plotting.
+This directory contains all code for translating Butler's risk index into R, calculating risk of the black-grass strategies, and analysis and plotting.
 
 ### File descriptions
 

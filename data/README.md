@@ -1,7 +1,7 @@
 ## Data
 
 ### Description
-This repository contains all input files required for Butler's risk index, as well as Butler's risk score validation files and information about the black-grass strategies
+This directory contains all input files required for Butler's risk index, as well as Butler's risk score validation files and information about the black-grass strategies
 
 
 ### File descriptions
@@ -31,7 +31,7 @@ This repository contains all input files required for Butler's risk index, as we
 - **butler_plants_risk.xlsx** - data containing the broadleaf arable plant risk scores as calculated by Butler et al. (2009). Used for validation.
 
 
-### Repository descriptions
+### Directory descriptions
 
 - **Butler_validation** - contains Butler's original files where he calculated the risk scores for each taxon as well as supplementary information from the publication (Butler et al. 2009). Used for validation of my risk score scripts, to ensure I had the same scores.
 
