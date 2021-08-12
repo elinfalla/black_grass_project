@@ -21,10 +21,10 @@ source("arable_plant_riskscore.R")
 file.remove("arable_plant_riskscore.R")
 
 # load farm management strategy datasets
-mamm_man_strats <- read_xlsx("change_BG.xlsx", sheet="Mammals")
-plant_man_strats <- read_xlsx("change_BG.xlsx", sheet="Plants")
-bee_man_strats <- read_xlsx("change_BG.xlsx", sheet="Bees")
-butt_man_strats <- read_xlsx("change_BG.xlsx", sheet="Butterflies")
+mamm_man_strats <- read_xlsx("../data/change_BG.xlsx", sheet="Mammals")
+plant_man_strats <- read_xlsx("../data/change_BG.xlsx", sheet="Plants")
+bee_man_strats <- read_xlsx("../data/change_BG.xlsx", sheet="Bees")
+butt_man_strats <- read_xlsx("../data/change_BG.xlsx", sheet="Butterflies")
 
 # replace NAs with 0s in all datasets
 mamm_man_strats <- NA_to_zero(mamm_man_strats)
@@ -334,7 +334,7 @@ model_tax_int_df$Estimate <- as.vector(fixef(model_tax_int))
 
 
 ## plot model
-pdf("../write_up/Figures/risk_comparison.pdf", width=9, height=6)
+pdf("../../write_up/Figures/risk_comparison.pdf", width=9, height=6)
 
 ggplot(data = model_tax_int_df %>% filter(!(Strategy == "BAU")), 
             aes(x = Strategy, y = Estimate, ymin = (Estimate - Std_error), ymax = (Estimate + Std_error))) +
@@ -408,7 +408,7 @@ component_colours <- c(
 component_order <- c("BG herbicide", "glyphosate", "pesticide", "fertiliser", "sowing", "tillage", "crop")
 tax_levels <- c("Bee", "Butterfly", "Broadleaf plant", "Mammal")
 
-pdf("../write_up/Figures/components_proportions.pdf", width=8, height=9)
+pdf("../../write_up/Figures/components_proportions.pdf", width=8, height=9)
 
 comp_bar <- ggplot(data = risk_per_component, aes(x = Strategy, y = Risk_score, fill = factor(Component, levels = component_order))) +
   geom_col(position = "fill") +
@@ -431,7 +431,7 @@ comp_bar
 
 dev.off()
 
-pdf("../write_up/Figures/components_rel_risk.pdf")
+pdf("../../write_up/Figures/components_rel_risk.pdf")
 
 rel_comp <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_risk, fill = Strategy)) +
   geom_bar(stat = "identity", position = "dodge") +
@@ -461,7 +461,7 @@ dev.off()
 # same plot using proportions not raw scores
 # risk_per_component$Relative_prop <- get_relative_risk(risk_per_component, "Proportion_risk", 3)
 # 
-# pdf("../write_up/Figures/components_rel_prop.pdf")
+# pdf("../../write_up/Figures/components_rel_prop.pdf")
 # 
 # prop_rel_comp <- 
 #   ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_prop, fill = Strategy)) +
@@ -595,7 +595,7 @@ risk_per_year <- all_std_riskscores_df %>%
   group_by(Strategy, Taxon, Year) %>%
   summarise(Risk_score = sum(Risk_score))
 
-pdf("../write_up/Figures/year_bar.pdf")
+pdf("../../write_up/Figures/year_bar.pdf")
 
 year_bar <- ggplot(data = risk_per_year, aes(x = Strategy, y = Risk_score, fill = as.factor(Year))) +
   geom_bar(position = "stack", stat = "identity") +
@@ -636,7 +636,7 @@ crop_reliance_df <- data.frame(Taxon = c("Bee", "Butterfly adult", "Butterfly la
                                                  mamm_crop_reliance,
                                                  plant_crop_reliance))
 
-pdf("../write_up/Figures/crop_reliance.pdf")
+pdf("../../write_up/Figures/crop_reliance.pdf")
 
 crop_rel_bar <- ggplot(data = crop_reliance_df, aes(x = Taxon, y = Crop_reliance, fill=Taxon)) +
   geom_bar(stat = "identity") +
@@ -713,7 +713,7 @@ risk_per_crop <- risk_per_crop %>%
 
 risk_per_crop <- risk_per_crop %>% arrange(Strategy)
 
-pdf("../write_up/Figures/crop_year_bar.pdf", width = 8, height = 10)
+pdf("../../write_up/Figures/crop_year_bar.pdf", width = 8, height = 10)
 
 crop_bar <- ggplot(data = risk_per_crop, aes(x = Crop_transition, y = Relative_risk)) +
   facet_grid(Taxon ~ Strategy, scales = "free_x") +
@@ -733,7 +733,7 @@ crop_bar <- ggplot(data = risk_per_crop, aes(x = Crop_transition, y = Relative_r
   geom_hline(yintercept = 0, color = "grey") +
   geom_bar(position = "stack", stat = "identity") +
   labs(x = "\nTransition",
-       y = "Relative standardised risk\n") #+
+       y = "Mean relative standardised risk\n") #+
   #scale_x_discrete(limits = risk_per_crop$Crop_transition)
 
 crop_bar

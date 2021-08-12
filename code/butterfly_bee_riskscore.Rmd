@@ -143,13 +143,13 @@ Note that the farm management strategies are read in a separate chunk with ```pu
 if (input == "butterflies" | input == "both") {
   
   # butterfly requirements matrix data
-  butterfly <- read_xlsx("Butterfly_requirements.xlsx", skip = 3)
+  butterfly <- read_xlsx("../data/Butterfly_requirements.xlsx", skip = 3)
   
   # forage plant locations
-  butt_plant_locs <- read_xlsx("forage_plant_location.xlsx", na = "NA")
+  butt_plant_locs <- read_xlsx("../data/forage_plant_location.xlsx", na = "NA")
   
   # butterfly forage plants
-  butterfly_plants <- read_xlsx("butterfly_forage_plants.xlsx")
+  butterfly_plants <- read_xlsx("../data/butterfly_forage_plants.xlsx")
   
   # replace NAs with 0s in all datasets
   butterfly <- NA_to_zero(butterfly)
@@ -172,7 +172,7 @@ if (input == "butterflies" | input == "both") {
 if (input == "butterflies" | input == "both") {
   
   # read in farm management strategies
-  butt_man_strats <- read_xlsx("change.xlsx", sheet="butterflies")
+  butt_man_strats <- read_xlsx("../data/change.xlsx", sheet="butterflies")
   
   # replace NAs with 0s
   butt_man_strats <- NA_to_zero(butt_man_strats)
@@ -186,14 +186,14 @@ if (input == "butterflies" | input == "both") {
 if (input == "bees" | input == "both") {
 
   # bee requirements matrix data
-  bee <- read_xlsx("Pollinator_requirements.xlsx") 
+  bee <- read_xlsx("../data/Pollinator_requirements.xlsx") 
 
   # bee forage plants
   bee_plants <- bee %>%
     select(species, plants_start:plants_end)
   
   # forage plant locations
-  bee_plant_locs <- read_xlsx("forage_plant_location.xlsx", na="NA")
+  bee_plant_locs <- read_xlsx("../data/forage_plant_location.xlsx", na="NA")
   
   # replace NAs with 0s in all datasets
   bee <- NA_to_zero(bee)
@@ -216,7 +216,7 @@ if (input == "bees" | input == "both") {
 if (input == "bees" | input == "both") {
   
   # farm management strategies
-  bee_man_strats <- read_xlsx("change.xlsx", sheet="bees", skip=1) 
+  bee_man_strats <- read_xlsx("../data/change.xlsx", sheet="bees", skip=1) 
   bee_man_strats <- bee_man_strats[1:6,] # select only butler strategies
   
   # replace NAs with 0s
@@ -416,20 +416,6 @@ calc_bee_butt_Pt <- function(data, strat) {
 
 ```
 
-``` {r test-pt, purl=FALSE}
-if (input == "bees") {
-  all_species <- bee$species
-  dat <- data.frame(species = all_species,
-                    Pt = calc_bee_butt_Pt(bee, bee_man_strats[4,]))
-  dat
-  
-  bombus <- dat %>%
-      filter(grepl("Bombus", species))
-  bombus
-}
-
-```
-
 ## 4. Calculate $F_t$
 
 ### 4.1. Calculate $F$ and $A$
@@ -619,19 +605,6 @@ calc_bee_butt_A_F <- function(data, plants, plant_locs, strat) {
 
 ```
 
-``` {r test-f-a, purl=FALSE}
-if (input == "bees") {
-
-  dat <- data.frame(species = all_species,  
-                    calc_bee_butt_A_F(bee, bee_plants, bee_plant_locs, bee_man_strats[6,]))
-  dat
-
-}
-
-
-```
-
-
 ### 4.2. Calculate $F_t$
 
 This function calls the relevant functions defined above, in order to calculate $F_t$ for all species for a particular management change.  
@@ -654,18 +627,6 @@ calc_bee_butt_Ft <- function(data, plants, plant_locs, strat) {
     )
   
   return(Ft)
-}
-
-```
-
-``` {r tet-ft, purl=FALSE}
-if (input == "bees") {
-  out <- data.frame(species = all_species,
-                  Ft = calc_bee_butt_Ft(bee, bee_plants, bee_plant_locs, bee_man_strats[4,]))
-
-bombus <- out %>%
-  filter(grepl("Bombus", species))
-bombus
 }
 
 ```
@@ -1050,7 +1011,7 @@ if (input == "bees" | input == "both") {
   
   #bee_butler_risk <- c(2.06,0.80,2.21,0.94,0.75,0.77,2.36,1.25,0.73,2.38,1.29,1.40,4.23,0.78)
   
-  bee_butler_risk <- read_xlsx("Butler_validation/Pollinator risk assessment database.xlsx", 9)
+  bee_butler_risk <- read_xlsx("../data/Butler_validation/Pollinator risk assessment database.xlsx", 9)
   
   bee_butler <- data.frame(species = bee_butler_risk$Species,
                        butler_risk = round(bee_butler_risk$score, 2),

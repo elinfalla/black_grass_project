@@ -79,7 +79,7 @@ Note that the farm management strategies are read in a separate chunk with ```pu
 
 ``` {r read-in-data}
 # mammal requirements data
-mammals <- read_xlsx("Mammal_requirements.xlsx", skip = 2) 
+mammals <- read_xlsx("../data/Mammal_requirements.xlsx", skip = 2) 
 
 # replace NAs with 0s
 mammals <- NA_to_zero(mammals)
@@ -87,7 +87,7 @@ mammals <- NA_to_zero(mammals)
 
 ``` {r load-man-strats, purl=FALSE}
 # farm management strategies
-mamm_man_strats <- read_xlsx("change.xlsx", sheet="mammals") 
+mamm_man_strats <- read_xlsx("../data/change.xlsx", sheet="mammals") 
 mamm_man_strats <- mamm_man_strats[1:6,]  # just include strategies of interest (Butler strategies)
 
 # replace NAs with 0s
@@ -311,12 +311,6 @@ calc_mamm_Nt <- function(data, strat) {
 
 ```
 
-``` {r test-nt, purl=FALSE}
-out <- data.frame(species = all_species,
-                  Nt = calc_mamm_Nt(mammals, mamm_man_strats[1,]))
-out
-```
-
 ## 5. Calculate risk score
 This function can take multiple strategies and outputs risk scores for each species for each strategy. It also (in the case that multiple strategies are inputted) calculates a **total risk score**, by summing the risk scores across all management strategies for each species.  
 
@@ -426,6 +420,5 @@ butler
 
 print(paste("correct species =", nrow(butler[butler$same == T,]), "/", nrow(butler)))
 
-butler$my_risk == butler$butler_risk *-1
 ```
 
