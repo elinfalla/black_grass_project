@@ -98,7 +98,7 @@ library(tidyverse) # for data manipulation
 
 * **NA_to_zero()** - Replaces all NAs in a dataset with zeros.  
 
-``` {r check-alignment}
+``` {r check-alignment, purl=FALSE}
 source("riskscore_functions.R")
 ```
 
