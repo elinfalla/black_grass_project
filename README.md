@@ -14,7 +14,7 @@ Directories:
 ----
 
 #### Language(s):
-- **R** - version 3.4.2
+- **R** - version 4.0.4
 
 #### Dependencies:
 #### R
