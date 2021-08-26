@@ -10,6 +10,7 @@ library(readxl) # for reading in Excel sheets
 library(scales)
 library(gridExtra)
 library(emmeans) #estimated marginal means - post-hoc analysis
+library(RColorBrewer)
 
 ### SET WORKING DIRECTORY TO CODE FOLDER BEFORE RUNNING
 
@@ -379,28 +380,55 @@ all_model_estimates <- bind_rows(bee_estimates,
                                  plant_estimates,
                                  mamm_estimates)
 
+# set colour of each point. red = riskier than BAU, green = less risk, black = NS
+all_model_estimates$Colour <- c(rep("green3", 7), "black", "red", rep("green3", 3))
+
 ## plot model
 tax_levels <- c("Bee", "Butterfly", "Broadleaf plant", "Mammal")
 
-pdf("../../write_up/Figures/risk_comparison.pdf", width=9, height=6)
+# make dataframe for annotations
+annotations <- data.frame(Taxon = rep(tax_levels, each = 3),
+                          label = c("t = -10.5", #HDHR bee
+                                    "t = -7.50", #LDHR bee
+                                    "t = -3.37", #LDLR bee
+                                    "t = -7.09", #HDHR butt
+                                    "t = -4.40", #LDHR butt
+                                    "t = -2.02", #LDLR butt
+                                    "t = -17.2", #HDHR plant
+                                    "t = 1.61", #LDHR plant
+                                    "t = 4.74", #LDLR plant
+                                    "t = -24.0", #HDHR mamm
+                                    "t = -6.35", #LDHR mamm
+                                    "t = -4.49" #LDLR mamm
+                                    ),
+                          y = all_model_estimates$Estimate,
+                          x = rep(c(1,2,3), times=4))
+
+pdf("../../write_up/Figures/risk_comparison.pdf"#, width=9, height=7
+    )
 
 total_risk_plot <- 
   ggplot(data = all_model_estimates, 
        aes(x = Strategy, y = Estimate, ymin = Estimate - (CI), ymax = Estimate + (CI))) +
-  geom_pointrange() +
+  geom_hline(yintercept = 0, lty=2, colour = "grey40") +
+  geom_pointrange(colour = all_model_estimates$Colour) +
   labs(y = "\nModel-estimated difference in risk (log) from BAU",
-       x = "Farm management strategy\n") +
-  scale_y_continuous(limits = c(-0.151, 0.05)) +
+       x = "Black-grass management strategy\n") +
+  scale_x_discrete(labels = c("HD-HR", "LD-HR", "LD-LR")) +
+  scale_y_continuous(limits = c(-0.155, 0.05)) +
   coord_flip() +
   facet_wrap(~factor(Taxon, levels = tax_levels)) +
-  geom_hline(yintercept = 0, lty=2) +
+
+  geom_label(aes(label=label, x=x, y=y), data = annotations, inherit.aes = F, 
+             nudge_x = 0.2, size = 3.9, label.size = NA) +
   theme_bw() +
   theme(strip.background = element_blank(), 
         strip.placement = "outside",
         strip.text = element_text(face = "bold", size = 14),
         legend.title = element_text(face = "bold"),
         axis.title = element_text(size = 13),
-        axis.text.x = element_text(size = 10))
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 12))
 
 total_risk_plot
 
@@ -465,7 +493,7 @@ pdf("../../write_up/Figures/species_risk_dist.pdf")
 species_risk <- ggplot(risk_per_species, aes(x = Strategy, y = Risk_score, fill = Taxon)) +
   geom_boxplot() +
   facet_wrap(~factor(Taxon, levels=tax_levels)) +
-  scale_x_discrete(labels = c("BAU", "HDHR", "LDHR", "LDLR")) +
+  scale_x_discrete(labels = c("BAU", "HD-HR", "LD-HR", "LD-LR")) +
   theme_bw() +
   theme(#panel.grid = element_blank(), # remove grid lines
         strip.background = element_blank(), 
@@ -487,23 +515,31 @@ risk_per_species[which.max(
 ), "Species"]
 
 
-
-#which.max(risk_per_species[risk_per_species$Taxon == "Broadleaf plant", "Risk_score"])
+## FUNCTION TO CALCULATE STANDARD ERROR ----
+se <- function(x) sqrt(var(x)/length(x))
 
 ### COMPONENTS PLOT ----
-
-## WHAT QUESTION AM I TRYING TO ANSWER????
-
 risk_per_component <- all_std_riskscores_df %>%
-  group_by(Strategy, Taxon, Component) %>%
-  summarise(Risk_score = mean(Risk_score)) %>% # mean risk score across species
-  group_by(Strategy, Taxon) %>%
-  mutate(Total_strat_risk = sum(Risk_score),
-         Proportion_risk = Risk_score / Total_strat_risk)
-
+  group_by(Strategy, Taxon, Species, Component) %>% 
+  summarise(Risk_score = sum(Risk_score)) %>% # find risk score per species per component
+  group_by(Strategy, Taxon, Component) %>% 
+  summarise(Risk_score = mean(Risk_score)) # find mean species risk per component
 risk_per_component$Relative_risk <- get_relative_risk(risk_per_component, "Risk_score", 3)
 
+# find relative risk for all species individually so can get SE
+species_risk_per_component <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Species, Component) %>%
+  summarise(Risk_score = sum(Risk_score)) # get total risk per species, per component per strat per taxa
+species_risk_per_component$Relative_risk <- get_relative_risk(species_risk_per_component, "Risk_score", 3)
 
+species_risk_per_component <- species_risk_per_component %>%
+  group_by(Strategy, Taxon, Component) %>%
+  summarise(Std_error = se(Relative_risk)) # find SE of relative risk per taxa, strat, component
+
+# add SE to risk_per_component to plot
+risk_per_component$Std_error <- species_risk_per_component$Std_error
+
+## set up variables for plotting
 component_colours <- c( 
           "crop" = "goldenrod2", 
           "fertiliser" = "navyblue", 
@@ -519,7 +555,7 @@ pdf("../../write_up/Figures/components_proportions.pdf", width=8, height=9)
 
 comp_bar <- ggplot(data = risk_per_component, aes(x = Strategy, y = Risk_score, fill = factor(Component, levels = component_order))) +
   geom_col(position = "fill") +
-  scale_x_discrete(labels = c("BAU", "HDHR", "LDHR", "LDLR")) +
+  scale_x_discrete(labels = c("BAU", "HD-HR", "LD-HR", "LD-LR")) +
   facet_wrap(~factor(Taxon, levels=tax_levels), scales="free") +
   theme_bw() +
   theme(panel.grid = element_blank(), # remove grid lines
@@ -542,6 +578,8 @@ pdf("../../write_up/Figures/components_rel_risk.pdf")
 
 rel_comp <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_risk, fill = Strategy)) +
   geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = Relative_risk - Std_error, ymax = Relative_risk + Std_error), width=.2,
+                position=position_dodge(.9)) +
   facet_wrap(~factor(Taxon, levels = tax_levels), scales = "free_x") +
   theme_bw() +
   theme(panel.grid = element_blank(), # remove grid lines
@@ -557,7 +595,7 @@ rel_comp <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",
   geom_hline(yintercept = 0, color="gray", size=.5, alpha=.5) +
   scale_x_discrete(labels = c("BG herbicides", "Crop choice", "Fertilisers", "Glyphosate", "Pesticides", "Sowing", "Tillage")) +
   scale_fill_discrete_sequential(palette = "ag_Sunset", 
-                                   labels = c("HDHR", "LDHR", "LDLR")) +
+                                   labels = c("HD-HR", "LD-HR", "LD-LR")) +
   labs(fill = "Black-grass strategy",
        x = "\nAgricultural component",
        y = "Relative standardised risk\n")
@@ -600,7 +638,210 @@ dev.off()
 
 
 
-### OLD COMPONENTS PLOT ----
+
+### CROP TYPES YEAR PLOT ----
+
+# extract vector of crop transitions per year per strategy per taxon
+crop_transitions <- all_std_riskscores_df %>%
+  group_by(Taxon, Strategy, Year, Component, Component_transition) %>%
+  summarise(Risk_score = sum(Risk_score)) %>%
+  filter(Component == "crop") %>%
+  mutate(Component_transition = gsub("wheat -> 18 month fallow", "wheat -> fallow", Component_transition),
+         Component_transition = gsub("oil seed rape", "OSR", Component_transition),
+         Component_transition = gsub("osr", "OSR", Component_transition),
+         Component_transition = gsub(".1", " (2)", Component_transition),
+         Component_transition = gsub("wheat -> beans", "wheat -> bean", Component_transition)
+         ) %>%
+  pull(Component_transition)
+
+risk_per_crop <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Species, Year) %>% # needs to be ordered by strategy for relative risk score
+  summarise(Risk_score = sum(Risk_score)) %>% # find risk score per species per year
+  group_by(Strategy, Taxon, Year) %>% 
+  summarise(Risk_score = mean(Risk_score))# %>% # find mean species risk per year
+  #ungroup()
+
+risk_per_crop$Relative_risk = get_relative_risk(risk_per_crop, "Risk_score", 3)
+
+# find relative risk for all species individually so can get SE
+species_risk_per_crop <- all_std_riskscores_df %>%
+  group_by(Strategy, Taxon, Species, Year) %>%
+  summarise(Risk_score = sum(Risk_score)) # get total risk per species, per year per strat per taxa
+species_risk_per_crop$Relative_risk <- get_relative_risk(species_risk_per_crop, "Risk_score", 3)
+
+species_risk_per_crop <- species_risk_per_crop %>%
+  group_by(Strategy, Taxon, Year) %>%
+  summarise(Std_error = se(Relative_risk)) # find SE of relative risk per taxa, strat, component
+
+# add SE to risk_per_component to plot
+risk_per_crop$Std_error <- species_risk_per_crop$Std_error
+
+
+risk_per_crop <- risk_per_crop %>%
+  arrange(Taxon) %>% # need ordered by taxon to add crop transitions
+  add_column(Crop_transition = crop_transitions) %>%
+  filter(!(Strategy == "BAU")) %>% # remove BAU as interested in BG relative riskscores
+  arrange(Strategy)
+
+risk_per_crop <- risk_per_crop %>%
+  mutate(Crop_transition = gsub("->", "\u2192", Crop_transition, fixed = T), # use unicode arrow symbol
+         
+    Crop_type_transition = case_when( # get types of crop transition
+    Crop_transition == "wheat \u2192 fallow" ~ "cereal → none",
+    Crop_transition == "wheat \u2192 maize" | 
+      Crop_transition == "no change (wheat)" |
+      Crop_transition == "no change (wheat) (2)" |
+      Crop_transition == "wheat \u2192 barley" |
+      Crop_transition == "wheat \u2192 barley (2)" ~ "cereal \u2192 cereal",
+    Crop_transition == "OSR \u2192 barley" | 
+      Crop_transition == "OSR \u2192 wheat" ~ "flowering \u2192 cereal",
+    Crop_transition == "wheat \u2192 OSR" | 
+      Crop_transition == "wheat \u2192 bean" ~ "cereal \u2192 flowering",
+    Crop_transition == "OSR \u2192 bean" | 
+      Crop_transition == "OSR \u2192 bean (2)" | 
+      Crop_transition == "no change (OSR)" ~ "flowering \u2192 flowering"))
+  
+
+strat_labels <- c("HD-HR", "LD-HR", "LD-LR")
+names(strat_labels) <- c("HDHR-N-h", "LDHR-N-h", "LDLR-N-h")
+
+cairo_pdf("../../write_up/Figures/crop_year_bar.pdf", width = 7, height = 9, 
+          family = "Arial")
+
+crop_bar <- 
+  ggplot(data = risk_per_crop, aes(x = Crop_transition, y = Relative_risk, fill = Crop_type_transition)) +
+  geom_hline(yintercept = 0, color = "grey") +
+  geom_hline(yintercept = seq(-1, 0.5, by = 0.25), 
+             color="grey", 
+             size=.5, 
+             alpha=.5) +
+  geom_bar(position = "stack", stat = "identity") +
+  geom_errorbar(aes(ymin = Relative_risk - Std_error, ymax = Relative_risk + Std_error), width=.2,
+                position=position_dodge(.9)) +
+  facet_grid(factor(Taxon, levels = tax_levels) ~ Strategy, scales = "free_x",
+             labeller = labeller(Strategy = strat_labels)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 11, angle = 400, vjust = 0.9, hjust = 1),
+        panel.grid = element_blank(),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        legend.text = element_text(size = 10),
+        axis.title = element_text(size = 13)) +
+  labs(x = "\nCrop transition",
+       y = "Mean relative standardised risk\n",
+       fill = "Crop type transition") +
+  guides(fill = guide_legend(nrow = 2, byrow = T)) + # legend on 2 rows
+  scale_fill_discrete_sequential(palette = "Viridis")
+
+crop_bar
+
+dev.off()
+## categorise based on type of conversion? eg. cereal -> flowering, grass -> arable
+      ## PROBABLY CLEARER TO GROUP BY TYPE ON X AXIS, CAN ALSO COLOUR
+## include 'no change' ones??? they do often still convey risk
+## CHANGE PLOT SO IS A COMPARISON BETWEEN BAU AND BG STRATS?? E.G. WHEAT-> BARLEY FOR BAU COMPARED TO FOR BG STRSATS?
+## OR JUST NOT INCLUDE BAU?? esp if doing relative risk score
+
+## LDHR - wheat -> barley, plants affected disproportionately. they are affected more by weed suppression
+# as it affects all species not just those using them as a resource like for other taxa.
+# same for osr-> wheat and osr->barley, may be why hdhr not significant
+
+# LDHR = wheat->wheat, wheat->barley, osr->bean, x2
+## COULD POTENTIALLY DO A MODEL TO SEE CONTRIBUTION OF CROP TRANSITIONS TO RISK SCORE?
+# risk ~ crop_transition_type
+
+crop_transitions_df <- data.frame(Crop_transition = crop_transitions[1:(num_yrs*length(strategy_names))])
+crop_count <- crop_transitions_df %>% 
+  count(Crop_transition)
+
+crop_count_bar <- ggplot(data = crop_count, aes(x = Crop_transition, y = n)) +
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 400, vjust = 0.9, hjust = 1))
+#crop_count_bar # probably not necessary to show
+
+### COMPONENT TRANSITIONS
+comp_categories <- all_std_riskscores_df %>%
+  group_by(Strategy, Year, Component, Component_transition) %>%
+  summarise(Risk_score = sum(Risk_score)) %>%
+  filter(!(Component_transition == "wheat -> beans")) %>%
+  mutate(Component_transition = gsub("selective BG herbicides -> none", "no", Component_transition),
+         Component_transition = gsub("osr", "OSR", Component_transition),
+         Component_transition = gsub("fertiliser -> none", "no", Component_transition),
+         Component_transition = gsub("autumn sowing -> no sowing", "none", Component_transition),
+         Component_transition = gsub("inversion tillage -> no tillage", "none", Component_transition),
+         Component_transition = gsub("[a-zA-Z ]+ -> ", "", Component_transition),
+         Component_transition = gsub(".[0-9]", "", Component_transition),
+         Component_transition = gsub("no change (", "", Component_transition, fixed = T),
+         Component_transition = gsub(")", "", Component_transition, fixed = T),
+         Component_transition = gsub("selective BG herbicides", "yes", Component_transition, fixed=T),
+         Component_transition = gsub("fertiliser", "yes", Component_transition, fixed=T),
+         Component_transition = gsub("no autumn glyphosate", "no", Component_transition, fixed=T),
+         Component_transition = gsub("autumn glyphosate", "yes", Component_transition, fixed=T),
+         Component_transition = gsub("glyphosate", "yes", Component_transition, fixed=T),
+         Component_transition = gsub("high pesticides", "yes", Component_transition, fixed=T),
+         Component_transition = gsub("no pesticides", "no", Component_transition, fixed=T),
+         Component_transition = gsub("pesticides", "yes", Component_transition, fixed=T),
+         Component_transition = gsub(" sowing", "", Component_transition, fixed=T),
+         Component_transition = gsub(" tillage", "", Component_transition, fixed=T),
+         Component_transition = gsub(", autumn", "", Component_transition, fixed=T),
+         Component_transition = gsub(" applied", "", Component_transition, fixed=T),
+         Component_transition = gsub(" month ", "", Component_transition, fixed=T),
+         Component_transition = gsub("beans", "bean", Component_transition, fixed=T),
+         Component_transition = gsub("oil seed rape", "OSR", Component_transition, fixed=T)) %>%
+  filter(!(Component_transition == "light autumn" | 
+             Component_transition == "subsoil autumn" | 
+             Component_transition == "inversion autumn")) %>%
+  group_by(Strategy, Component) %>%
+  dplyr::count(Component_transition)
+
+pdf("../../write_up/Figures/component_categories.pdf", width = 8, height = 11)
+
+all_comp_cat_plots <- lapply(1:length(component_order), function(i)
+  ggplot(data = comp_categories[comp_categories$Component == component_order[i],], aes(x = Strategy, y = n, fill = Component_transition)) +
+    geom_col() +
+    theme_bw() +
+    
+    scale_y_continuous("Number of years") + 
+    ggtitle(component_titles[i]) +
+    theme(legend.position = "right",
+          legend.title = element_blank(),
+          plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+          panel.grid = element_blank(),  # remove grid lines
+          axis.text.x = element_text(size = 10)
+    ) +
+    scale_x_discrete(labels = c("BAU", "HD-HR", "LD-HR", "LD-LR")) +
+    #scale_fill_discrete_qualitative(palette = "Dark 3")
+    scale_fill_brewer(palette = "Set1")
+  )
+
+blank_plot <- ggplot() + theme_void()
+
+
+lay <- rbind(c(1,1,2,2),
+             c(3,3,4,4),
+             c(5,5,6,6),
+             c(7,7,8,8))
+
+
+# arrange them with legend at the bottom
+gridExtra::grid.arrange(all_comp_cat_plots[[1]],
+                        all_comp_cat_plots[[2]],
+                        all_comp_cat_plots[[3]],
+                        all_comp_cat_plots[[4]],
+                        all_comp_cat_plots[[5]],
+                        all_comp_cat_plots[[6]],
+                        all_comp_cat_plots[[7]],
+                        blank_plot,
+                        layout_matrix = lay,
+                        heights = (c(2.5,2.5,2.5,2.5)))
+
+dev.off()
+
+
+### **OLD** COMPONENTS PLOT ----
 
 # extract risk scores + SE
 # components_df <- extract_lmer_means(model_comp_tax_int, 7) # 7 is num levels in 'component' fixed effect
@@ -696,7 +937,7 @@ dev.off()
 # 
 # 
 # 
-# ### YEAR PLOT ----
+# ### **OLD** YEAR PLOT ----
 # 
 # risk_per_year <- all_std_riskscores_df %>%
 #   group_by(Strategy, Taxon, Year) %>%
@@ -712,7 +953,7 @@ dev.off()
 # 
 # dev.off()
 
-### CROP AND FARMLAND RELIANCE PLOTS ----
+### **OLD** CROP AND FARMLAND RELIANCE PLOTS ----
 
 # number of species using cropped (/arable) area as a habitat for each taxon
 
@@ -756,7 +997,7 @@ crop_rel_bar <- ggplot(data = crop_reliance_df, aes(x = Taxon, y = Crop_reliance
   labs(x = "\nTaxonomic group",
        y = "Proportion reliant on crop habitat\n") +
   scale_x_discrete(labels = c("Bee", "Broadleaf plant", "Butterfly (adult)", "Butterfly (larva)", "Mammal"))
-  
+
 crop_rel_bar
 # get icons above each bar showing which taxa they are
 
@@ -787,184 +1028,4 @@ farm_bar <- ggplot(data = farm_reliance_df, aes(x = Taxon, y = Farm_reliance, fi
 ## bees have lower reliance on farmland, but what about those that rely on cropped areas?
 ## could do plot of mean farm reliance for those reliant on cropped area - may not be useful
 
-
-### CROP TYPES PLOT ----
-
-# extract vector of crop transitions per year per strategy per taxon
-crop_transitions <- all_std_riskscores_df %>%
-  group_by(Taxon, Strategy, Year, Component, Component_transition) %>%
-  summarise(Risk_score = sum(Risk_score)) %>%
-  filter(Component == "crop") %>%
-  mutate(Component_transition = gsub("wheat -> 18 month fallow", "wheat -> fallow", Component_transition),
-         Component_transition = gsub("oil seed rape", "osr", Component_transition),
-         Component_transition = gsub(".1", " (2)", Component_transition),
-         Component_transition = gsub("wheat -> beans", "wheat -> bean", Component_transition)
-         ) %>%
-  pull(Component_transition)
-
-risk_per_crop <- all_std_riskscores_df %>%
-  group_by(Strategy, Taxon, Year) %>% # needs to be ordered by strategy for relative risk score
-  summarise(Risk_score = mean(Risk_score)) %>% # find mean risk per taxon, strat, year
-  ungroup()
-
-risk_per_crop$Relative_risk = get_relative_risk(risk_per_crop, "Risk_score", 3)
-
-risk_per_crop <- risk_per_crop %>%
-  arrange(Taxon) %>% # need ordered by taxon to add crop transitions
-  add_column(Crop_transition = crop_transitions) %>%
-  filter(!(Strategy == "BAU")) %>% # remove BAU as interested in BG relative riskscores
-  arrange(Strategy)
-
-risk_per_crop <- risk_per_crop %>%
-  mutate(Crop_transition = gsub("->", "\u2192", Crop_transition, fixed = T),
-         
-    Crop_type_transition = case_when(
-    Crop_transition == "wheat \u2192 fallow" ~ "cereal → none",
-    Crop_transition == "wheat \u2192 maize" | 
-      Crop_transition == "no change (wheat)" |
-      Crop_transition == "no change (wheat) (2)" |
-      Crop_transition == "wheat \u2192 barley" |
-      Crop_transition == "wheat \u2192 barley (2)" ~ "cereal \u2192 cereal",
-    Crop_transition == "osr \u2192 barley" | 
-      Crop_transition == "osr \u2192 wheat" ~ "flowering \u2192 cereal",
-    Crop_transition == "wheat \u2192 osr" | 
-      Crop_transition == "wheat \u2192 bean" ~ "cereal \u2192 flowering",
-    Crop_transition == "osr \u2192 bean" | 
-      Crop_transition == "osr \u2192 bean (2)" | 
-      Crop_transition == "no change (osr)" ~ "flowering \u2192 flowering"))
-  
-
-strat_labels <- c("HDHR", "LDHR", "LDLR")
-names(strat_labels) <- c("HDHR-N-h", "LDHR-N-h", "LDLR-N-h")
-
-cairo_pdf("../../write_up/Figures/crop_year_bar.pdf", width = 8, height = 10, family = "Arial")
-
-crop_bar <- 
-  ggplot(data = risk_per_crop, aes(x = Crop_transition, y = Relative_risk, fill = Crop_type_transition)) +
-  facet_grid(factor(Taxon, levels = tax_levels) ~ Strategy, scales = "free_x",
-             labeller = labeller(Strategy = strat_labels)) +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 11, angle = 400, vjust = 0.9, hjust = 1),
-        panel.grid = element_blank(),
-        strip.background = element_blank(),
-        strip.placement = "outside",
-        strip.text = element_text(face = "bold", size = 14),
-        legend.title = element_text(face = "bold"),
-        legend.position = "bottom",
-        legend.text = element_text(size = 10),
-        axis.title = element_text(size = 13)) +
-  geom_hline(yintercept = seq(-0.2, 0.1, by = 0.025), 
-             color="grey", 
-             size=.5, 
-             alpha=.5) +
-  geom_hline(yintercept = 0, color = "grey") +
-  geom_bar(position = "stack", stat = "identity") +
-  labs(x = "\nCrop transition",
-       y = "Mean relative standardised risk\n",
-       fill = "Crop type transition") +
-  guides(fill = guide_legend(nrow = 2, byrow = T)) + # legend on 2 rows
-  scale_fill_discrete_sequential(palette = "Viridis")
-
-crop_bar
-
-dev.off()
-## categorise based on type of conversion? eg. cereal -> flowering, grass -> arable
-      ## PROBABLY CLEARER TO GROUP BY TYPE ON X AXIS, CAN ALSO COLOUR
-## include 'no change' ones??? they do often still convey risk
-## CHANGE PLOT SO IS A COMPARISON BETWEEN BAU AND BG STRATS?? E.G. WHEAT-> BARLEY FOR BAU COMPARED TO FOR BG STRSATS?
-## OR JUST NOT INCLUDE BAU?? esp if doing relative risk score
-
-## LDHR - wheat -> barley, plants affected disproportionately. they are affected more by weed suppression
-# as it affects all species not just those using them as a resource like for other taxa.
-# same for osr-> wheat and osr->barley, may be why hdhr not significant
-
-# LDHR = wheat->wheat, wheat->barley, osr->bean, x2
-## COULD POTENTIALLY DO A MODEL TO SEE CONTRIBUTION OF CROP TRANSITIONS TO RISK SCORE?
-# risk ~ crop_transition_type
-
-crop_transitions_df <- data.frame(Crop_transition = crop_transitions[1:(num_yrs*length(strategy_names))])
-crop_count <- crop_transitions_df %>% 
-  count(Crop_transition)
-
-crop_count_bar <- ggplot(data = crop_count, aes(x = Crop_transition, y = n)) +
-  geom_bar(stat = "identity") + 
-  theme(axis.text.x = element_text(angle = 400, vjust = 0.9, hjust = 1))
-#crop_count_bar # probably not necessary to show
-
-### COMPONENT TRANSITIONS
-comp_categories <- all_std_riskscores_df %>%
-  group_by(Strategy, Year, Component, Component_transition) %>%
-  summarise(Risk_score = sum(Risk_score)) %>%
-  filter(!(Component_transition == "wheat -> beans")) %>%
-  mutate(Component_transition = gsub("selective BG herbicides -> none", "no", Component_transition),
-         Component_transition = gsub("fertiliser -> none", "no", Component_transition),
-         Component_transition = gsub("autumn sowing -> no sowing", "none", Component_transition),
-         Component_transition = gsub("inversion tillage -> no tillage", "none", Component_transition),
-         Component_transition = gsub("[a-zA-Z ]+ -> ", "", Component_transition),
-         Component_transition = gsub(".[0-9]", "", Component_transition),
-         Component_transition = gsub("no change (", "", Component_transition, fixed = T),
-         Component_transition = gsub(")", "", Component_transition, fixed = T),
-         Component_transition = gsub("selective BG herbicides", "yes", Component_transition, fixed=T),
-         Component_transition = gsub("fertiliser", "yes", Component_transition, fixed=T),
-         Component_transition = gsub("no autumn glyphosate", "no", Component_transition, fixed=T),
-         Component_transition = gsub("autumn glyphosate", "yes", Component_transition, fixed=T),
-         Component_transition = gsub("glyphosate", "yes", Component_transition, fixed=T),
-         Component_transition = gsub("high pesticides", "yes", Component_transition, fixed=T),
-         Component_transition = gsub("no pesticides", "no", Component_transition, fixed=T),
-         Component_transition = gsub("pesticides", "yes", Component_transition, fixed=T),
-         Component_transition = gsub(" sowing", "", Component_transition, fixed=T),
-         Component_transition = gsub(" tillage", "", Component_transition, fixed=T),
-         Component_transition = gsub(", autumn", "", Component_transition, fixed=T),
-         Component_transition = gsub(" applied", "", Component_transition, fixed=T),
-         Component_transition = gsub(" month ", "", Component_transition, fixed=T),
-         Component_transition = gsub("beans", "bean", Component_transition, fixed=T),
-         Component_transition = gsub("oil seed rape", "osr", Component_transition, fixed=T)) %>%
-  filter(!(Component_transition == "light autumn" | 
-             Component_transition == "subsoil autumn" | 
-             Component_transition == "inversion autumn")) %>%
-  group_by(Strategy, Component) %>%
-  dplyr::count(Component_transition)
-
-pdf("../../write_up/Figures/component_categories.pdf", width = 8, height = 11)
-
-all_comp_cat_plots <- lapply(1:length(component_order), function(i)
-  ggplot(data = comp_categories[comp_categories$Component == component_order[i],], aes(x = Strategy, y = n, fill = Component_transition)) +
-    geom_col() +
-    theme_bw() +
-    
-    scale_y_continuous("Number of years") + 
-    ggtitle(component_titles[i]) +
-    theme(legend.position = "right",
-          legend.title = element_blank(),
-          plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
-          panel.grid = element_blank(),  # remove grid lines
-          axis.text.x = element_text(size = 10)
-    ) +
-    scale_x_discrete(labels = c("BAU", "HDHR", "LDHR", "LDLR")) +
-    scale_fill_discrete_qualitative(palette = "Dark 3")
-  )
-  
-
-blank_plot <- ggplot() + theme_void()
-
-
-lay <- rbind(c(1,1,2,2),
-             c(3,3,4,4),
-             c(5,5,6,6),
-             c(7,7,8,8))
-
-
-# arrange them with legend at the bottom
-gridExtra::grid.arrange(all_comp_cat_plots[[1]],
-                        all_comp_cat_plots[[2]],
-                        all_comp_cat_plots[[3]],
-                        all_comp_cat_plots[[4]],
-                        all_comp_cat_plots[[5]],
-                        all_comp_cat_plots[[6]],
-                        all_comp_cat_plots[[7]],
-                        blank_plot,
-                        layout_matrix = lay,
-                        heights = (c(2.5,2.5,2.5,2.5)))
-
-dev.off()
 
