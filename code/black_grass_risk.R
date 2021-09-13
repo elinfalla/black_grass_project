@@ -404,6 +404,10 @@ annotations <- data.frame(Taxon = rep(tax_levels, each = 3),
                           y = all_model_estimates$Estimate,
                           x = rep(c(1,2,3), times=4))
 
+# set colours of points for presentation version
+all_model_estimates$Pres_colour <- c(rep("seagreen", 7), "black", "deeppink3", rep("seagreen", 3))
+
+
 pdf("../../write_up/Figures/risk_comparison.pdf"#, width=9, height=7
     )
 
@@ -431,6 +435,36 @@ total_risk_plot <-
         axis.text.y = element_text(size = 12))
 
 total_risk_plot
+
+dev.off()
+
+### ADJUST PLOT FOR PRESENTATION
+pdf("../../write_up/Figures/PRES_risk_comparison.pdf")
+
+total_risk_plot_pres <- 
+  ggplot(data = all_model_estimates, 
+         aes(x = Strategy, y = Estimate, ymin = Estimate - (CI), ymax = Estimate + (CI))) +
+  geom_hline(yintercept = 0, lty=2, colour = "grey40") +
+  geom_pointrange(colour = all_model_estimates$Pres_colour) +
+  labs(y = "\nModel-estimated difference in risk (log) from BAU",
+       x = "Black-grass management strategy\n") +
+  scale_x_discrete(labels = c("HD-HR", "LD-HR", "LD-LR")) +
+  scale_y_continuous(limits = c(-0.155, 0.05)) +
+  coord_flip() +
+  facet_wrap(~factor(Taxon, levels = tax_levels)) +
+  
+  geom_label(aes(label=label, x=x, y=y), data = annotations, inherit.aes = F, 
+             nudge_x = 0.2, size = 3.9, label.size = NA) +
+  theme_bw() +
+  theme(strip.background = element_blank(), 
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 12))
+
+total_risk_plot_pres
 
 dev.off()
 
@@ -602,6 +636,43 @@ rel_comp <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",
 rel_comp
 
 dev.off()
+
+### CHANGES TO REL_RISK PLOT FOR PRESENTATION
+strat_colours <- c("HDHR-N-h" = "red",
+                   "LDHR-N-h" = "yellow",
+                   "LDLR-N-h" = "green")
+strat_titles <- c("High", "Medium", "Low")
+
+
+pdf("../../write_up/Figures/PRES_components_rel_risk.pdf")
+
+rel_comp_pres <- ggplot(data=risk_per_component[risk_per_component$Strategy != "BAU",], aes(x = Component, y = Relative_risk, fill = Strategy)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = Relative_risk - Std_error, ymax = Relative_risk + Std_error), width=.2,
+                position=position_dodge(.9)) +
+  facet_wrap(~factor(Taxon, levels = tax_levels), scales = "free_x") +
+  theme_bw() +
+  theme(panel.grid = element_blank(), # remove grid lines
+        strip.background = element_blank(), 
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        legend.text = element_text(size = 10),
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(size = 10, angle = 400, vjust = 0.9, hjust = 1)) +  # rotate tick text
+  geom_vline(xintercept = seq(0.5, length(risk_components), by = 1), color="gray", size=.5, alpha=.5) + # set vertical lines between x groups
+  geom_hline(yintercept = 0, color="gray", size=.5, alpha=.5) +
+  scale_x_discrete(labels = c("BG herbicides", "Crop choice", "Fertilisers", "Glyphosate", "Pesticides", "Sowing", "Tillage")) +
+  scale_fill_manual(values = strat_colours,
+                    labels = strat_titles) +
+  labs(fill = "Resistant black-grass severity",
+       x = "\nAgricultural component",
+       y = "Relative standardised risk\n")
+rel_comp_pres
+
+dev.off()
+
 
 # same plot using proportions not raw scores
 risk_per_component$Relative_prop <- get_relative_risk(risk_per_component, "Proportion_risk", 3)
